@@ -1,0 +1,49 @@
+{
+  "name": "allure-report-storage",
+  "version": "0.0.0",
+  "private": true,
+  "description": "",
+  "license": "Apache-2.0",
+  "author": "Qameta Software",
+  "scripts": {
+    "build": "node ./scripts/run-build.cjs",
+    "clean": "rimraf ./dist ./out ./allure-report",
+    "format": "yarn format:write",
+    "format:check": "node ./scripts/run-oxfmt.cjs --check",
+    "format:write": "node ./scripts/run-oxfmt.cjs --write",
+    "lint": "node ./scripts/run-lint.cjs",
+    "lint:fix": "node ./scripts/run-lint.cjs --fix",
+    "lint:type": "node ./scripts/run-type-lint.cjs",
+    "postinstall": "git config --local core.hooksPath .husky/_ || true",
+    "test:e2e": "vitest run --config ./vitest.e2e.config.mts",
+    "test:unit": "vitest run --config ./vitest.config.mts",
+    "test:report": "allure generate ./out/allure-results",
+    "start": "node ./dist/server.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1038.0",
+    "@hono/node-server": "^2.0.0",
+    "hono": "^4.12.25",
+    "kysely": "^0.28.17"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "allure": "^3.13.1",
+    "allure-vitest": "^3.10.1",
+    "lefthook": "^2.1.4",
+    "oxfmt": "0.36.0",
+    "oxlint": "1.51.0",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.6.3",
+    "vitest": "^4.1.4",
+    "wrangler": "^4.104.0"
+  },
+  "resolutions": {
+    "brace-expansion": "5.0.6",
+    "fast-xml-builder": "1.2.0",
+    "ip-address": "10.2.0",
+    "tar": "7.5.16",
+    "vite": "8.0.16"
+  },
+  "packageManager": "yarn@4.5.1"
+}

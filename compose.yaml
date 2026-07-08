@@ -1,0 +1,21 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      ACCESS_TOKEN: ${ACCESS_TOKEN:-change-me}
+      DATABASE_PATH: /data/reports.sqlite
+      DATA_DIR: /data
+      HOST: 0.0.0.0
+      MAIN_BRANCH: ${MAIN_BRANCH:-main}
+      PORT: 3000
+      SECRET: ${SECRET:-change-me-secret}
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    volumes:
+      - report-data:/data
+
+volumes:
+  report-data:

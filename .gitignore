@@ -1,0 +1,41 @@
+# Allure
+.allure
+allure-report
+
+# Yarn
+.yarn/*
+!.yarn/cache
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+# IDEs
+.idea/*
+!.idea/vcs.xml
+*.iml
+*.ipr
+.cursor/
+.cursorrules
+.cursorignore
+.cursorindexingignore
+
+# Node
+node_modules
+
+# OS noise
+**/.DS_Store
+
+# Build and test outputs
+out
+dist
+dist-tests
+build
+*.log
+*.tgz
+*.zip
+**/allure-results
+**/.nyc_output
+**/package.tgz
+*storybook.log

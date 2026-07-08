@@ -1,0 +1,25 @@
+# release.yml
+
+changelog:
+  categories:
+    - title: "🚀 New Features"
+      labels:
+        - "pr:new feature"
+    - title: "🔬 Improvements"
+      labels:
+        - "pr:improvement"
+    - title: "🐞 Bug Fixes"
+      labels:
+        - "pr:bug"
+    - title: "⬆️ Dependency Updates"
+      labels:
+        - "pr:dependencies"
+    - title: "📖 Documentation improvements"
+      labels:
+        - "pr:documentation"
+    - title: "⛔️ Security"
+      labels:
+        - "pr:security"
+    - title: "👻 Internal changes"
+      labels:
+        - "pr:internal"

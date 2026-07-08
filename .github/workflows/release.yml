@@ -1,0 +1,49 @@
+name: Release
+run-name: Release ${{ inputs.releaseVersion }} by ${{ github.actor }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      releaseVersion:
+        description: "The release version in <MAJOR>.<MINOR>.<PATCH> format"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check release version
+        run: |
+          expr "${{ github.event.inputs.releaseVersion }}" : '\(^[1-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\(-beta\.[0-9][0-9]*\)\{0,1\}\)$'
+      - uses: actions/checkout@v6
+      - name: Configure CI git user
+        run: |
+          git config --global user.name github-actions[bot]
+          git config --global user.email github-actions[bot]@users.noreply.github.com
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: "yarn"
+      - name: Install dependencies
+        run: yarn install --immutable --immutable-cache --check-cache
+      - name: Set release version
+        run: npm version ${{ github.event.inputs.releaseVersion }} --no-git-tag-version
+      - name: Commit release version and create tag
+        run: |
+          git add -A
+          git commit -m "release ${{ github.event.inputs.releaseVersion }}"
+          git tag v${{ github.event.inputs.releaseVersion }}
+          git push origin HEAD:${GITHUB_REF_NAME}
+          git push origin v${{ github.event.inputs.releaseVersion }}
+      - name: Publish GitHub release
+        uses: octokit/request-action@v2.x
+        with:
+          route: POST /repos/${{ github.repository }}/releases
+          tag_name: v${{ github.event.inputs.releaseVersion }}
+          generate_release_notes: true
+          target_commitish: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

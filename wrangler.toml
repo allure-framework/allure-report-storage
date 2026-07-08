@@ -1,0 +1,17 @@
+name = "allure-report-storage"
+main = "src/worker.ts"
+compatibility_date = "2026-05-06"
+
+[[d1_databases]]
+binding = "REPORTS_DB"
+database_name = "allure-report-storage"
+database_id = "replace-with-d1-database-id"
+
+[[r2_buckets]]
+binding = "REPORTS_BUCKET"
+bucket_name = "allure-report-storage"
+
+[vars]
+ACCESS_TOKEN = "change-me"
+MAIN_BRANCH = "main"
+SECRET = "change-me-secret"
