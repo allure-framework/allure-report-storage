@@ -28,7 +28,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
-    "allure": "^3.13.1",
+    "allure": "^3.14.2",
     "allure-vitest": "^3.10.1",
     "lefthook": "^2.1.4",
     "oxfmt": "0.58.0",
