@@ -1028,12 +1028,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@hono/node-server@npm:^2.0.0":
-  version: 2.0.0
-  resolution: "@hono/node-server@npm:2.0.0"
+"@hono/node-server@npm:^2.0.8":
+  version: 2.0.8
+  resolution: "@hono/node-server@npm:2.0.8"
   peerDependencies:
     hono: ^4
-  checksum: 10/b3ac731a34c8eae44ef37d7a6b7329c9c2dacecbd6ff1e2782ecdac05421dafd902e513b25693d9e6dfdc26e0a0c26ff31e8c360b710dcd3a35e101f5bd950ce
+  checksum: 10/a2f55f01e915d903b3d7c7f828a6f4b54752c1ea3ee7b26a41579805ddaa45df8728351ea487b498b1d7ac3d8a1d4a4e45d34aaa6e4cf29872239566acc9c6af
   languageName: node
   linkType: hard
 
@@ -2544,7 +2544,7 @@ __metadata:
   resolution: "allure-report-storage@workspace:."
   dependencies:
     "@aws-sdk/client-s3": "npm:^3.1084.0"
-    "@hono/node-server": "npm:^2.0.0"
+    "@hono/node-server": "npm:^2.0.8"
     "@types/node": "npm:^26.1.1"
     allure: "npm:^3.14.2"
     allure-vitest: "npm:^3.10.1"
