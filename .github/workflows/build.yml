@@ -18,7 +18,7 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: "24.x"
@@ -34,7 +34,7 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: "24.x"
@@ -55,7 +55,7 @@ jobs:
       ALLURE_PROJECT_ID: ${{ secrets.ALLURE_PROJECT_ID }}
       ALLURE_ENDPOINT: ${{ secrets.ALLURE_ENDPOINT }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: "24.x"
