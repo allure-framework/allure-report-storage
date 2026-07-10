@@ -27,7 +27,7 @@
     "kysely": "^0.28.17"
   },
   "devDependencies": {
-    "@types/node": "^25.6.0",
+    "@types/node": "^26.1.1",
     "allure": "^3.14.2",
     "allure-vitest": "^3.10.1",
     "lefthook": "^2.1.4",
