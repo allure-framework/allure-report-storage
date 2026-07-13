@@ -2548,7 +2548,7 @@ __metadata:
     "@types/node": "npm:^26.1.1"
     allure: "npm:^3.14.2"
     allure-vitest: "npm:^3.10.1"
-    hono: "npm:^4.12.25"
+    hono: "npm:^4.12.29"
     kysely: "npm:^0.28.17"
     lefthook: "npm:^2.1.4"
     oxfmt: "npm:0.58.0"
@@ -3615,10 +3615,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"hono@npm:^4.12.25":
-  version: 4.12.27
-  resolution: "hono@npm:4.12.27"
-  checksum: 10/f1bb52f3871093fae5b5bc40fb179ff2e6d43c6dab8d7065ef182d8ff6cdc1c41dc1124b07f2f02e0fe36ec1e39e72300ed3447f64391e39d71978616d4f5a07
+"hono@npm:^4.12.29":
+  version: 4.12.29
+  resolution: "hono@npm:4.12.29"
+  checksum: 10/9f49b7e303e7816a3b45d667aa8791c6b3f98e33c1ce96dd176319f983c1e0a119ea26a07e5f0f2a8a213f32405b33bb8be02f0b9d930eb834c387eceb52133c
   languageName: node
   linkType: hard
 
