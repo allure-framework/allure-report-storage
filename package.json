@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1084.0",
-    "@hono/node-server": "^2.0.0",
+    "@hono/node-server": "^2.0.8",
     "hono": "^4.12.29",
     "kysely": "^0.28.17"
   },
