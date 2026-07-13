@@ -30,7 +30,7 @@
     "@types/node": "^26.1.1",
     "allure": "^3.14.2",
     "allure-vitest": "^3.10.1",
-    "lefthook": "^2.1.4",
+    "lefthook": "^2.1.10",
     "oxfmt": "0.58.0",
     "oxlint": "1.73.0",
     "rimraf": "^6.0.1",
