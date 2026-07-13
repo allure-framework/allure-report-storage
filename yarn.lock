@@ -2549,7 +2549,7 @@ __metadata:
     allure: "npm:^3.14.2"
     allure-vitest: "npm:^3.10.1"
     hono: "npm:^4.12.29"
-    kysely: "npm:^0.28.17"
+    kysely: "npm:^0.29.3"
     lefthook: "npm:^2.1.10"
     oxfmt: "npm:0.58.0"
     oxlint: "npm:1.73.0"
@@ -3788,10 +3788,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"kysely@npm:^0.28.17":
-  version: 0.28.17
-  resolution: "kysely@npm:0.28.17"
-  checksum: 10/50690d745016d25f09574fe58c7e31f84427845497f30c84280131bc1f9f60d118c53640a184e225708a1f54f2b54ac12fdf3a0dfc6405527487ad96ff594f42
+"kysely@npm:^0.29.3":
+  version: 0.29.3
+  resolution: "kysely@npm:0.29.3"
+  checksum: 10/54355a8535bfe8211f2ef74c2fe56814430c11a27a90ab34860490593b0a2468536fe1e9c1d106c107ae5c94e49a0dec789971ecf96ce092ff7fc3ada84bc3e3
   languageName: node
   linkType: hard
 
