@@ -371,7 +371,7 @@ export const createHttpApp = <Bindings extends object = Record<string, never>>(
     const projectMainBranch = project?.mainBranch ?? mainBranch;
     const branch = c.req.query("branch")?.trim() || projectMainBranch;
     const limitParam = c.req.query("limit");
-    const limit = limitParam === undefined ? undefined : Number(limitParam);
+    const limit = limitParam === undefined ? 10 : Number(limitParam);
 
     if (!repo) {
       return c.json({ error: "repo is required" }, 400);

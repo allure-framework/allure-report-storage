@@ -905,6 +905,33 @@ describe("reports API", () => {
     });
   });
 
+  it("limits history to 10 points when limit is omitted", async () => {
+    await withApp(async ({ app }) => {
+      for (let index = 1; index <= 11; index += 1) {
+        await publishHistoryPoint(app, `default-limit-${index}`, "main", `p${index}`);
+      }
+
+      let response = await requestAuthorized(app, `/api/history?repo=${encodeURIComponent(REPO)}`);
+      expect(response.status).toBe(200);
+      expect((await readJson<HistoryResponse>(response)).history.map((item) => item.point)).toEqual([
+        "p11",
+        "p10",
+        "p9",
+        "p8",
+        "p7",
+        "p6",
+        "p5",
+        "p4",
+        "p3",
+        "p2",
+      ]);
+
+      response = await requestAuthorized(app, `/api/history?repo=${encodeURIComponent(REPO)}&limit=2`);
+      expect(response.status).toBe(200);
+      expect((await readJson<HistoryResponse>(response)).history.map((item) => item.point)).toEqual(["p11", "p10"]);
+    });
+  });
+
   it("truncates history at a missing older point and deletes inconsistent reports", async () => {
     await withApp(async ({ app, tempDir }) => {
       await publishHistoryPoint(app, "a", "main", "a");
