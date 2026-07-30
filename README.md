@@ -70,5 +70,5 @@ If your main branch doesn't call `main`, you can specify a custom one to compare
 curl -sS -X POST http://localhost:3000/api/projects/main-branch \
   -H "Authorization: Bearer storage_bootstrap_token" \
   -H "Content-Type: application/json" \
-  -d '{ "repo": "repo_name", "main-branch": "main_branch_name"}'
+  -d '{ "repo": "repo_name", "main_branch": "main_branch_name"}'
 ```
