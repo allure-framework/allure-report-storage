@@ -72,3 +72,12 @@ curl -sS -X POST http://localhost:3000/api/projects/main-branch \
   -H "Content-Type: application/json" \
   -d '{ "repo": "repo_name", "main_branch": "main_branch_name"}'
 ```
+
+### Report retention
+
+Automated report retention can delete old reports to reduce disk or storage costs. It is disabled by default and enabled only when at least one retention env var is set:
+
+- `REPORT_RETENTION_MAX_REPORTS_PER_BRANCH`: keep newest completed reports per branch up to this positive integer limit, delete older ones.
+- `REPORT_RETENTION_MAX_REPORT_AGE_DAYS`: delete reports older than this positive number of days. The newest completed report per branch is always preserved.
+
+Both strategies can be enabled together. Retention does not change public history download limits or manual delete behavior.

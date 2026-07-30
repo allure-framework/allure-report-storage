@@ -49,6 +49,20 @@ Optional vars: `S3_PREFIX`, `S3_REPORTS_PREFIX`, `S3_ASSETS_PREFIX`, `S3_SESSION
 For Cloudflare R2, use `S3_REGION=auto`, `S3_ENDPOINT=https://<cloudflare-account-id>.r2.cloudflarestorage.com`, and `S3_FORCE_PATH_STYLE=false`.
 Bucket-specific R2 endpoints are normalized internally.
 
+## Report retention
+
+Automated retention can delete old reports to reduce disk or S3 storage costs. It is disabled by default and enabled only when at least one env var is set:
+
+```bash
+REPORT_RETENTION_MAX_REPORTS_PER_BRANCH=20
+REPORT_RETENTION_MAX_REPORT_AGE_DAYS=30
+```
+
+- `REPORT_RETENTION_MAX_REPORTS_PER_BRANCH`: keep newest completed reports per branch up to this positive integer limit, delete older ones.
+- `REPORT_RETENTION_MAX_REPORT_AGE_DAYS`: delete reports older than this positive number of days. The newest completed report per branch is always preserved.
+
+Both strategies can be enabled together. The Docker service runs retention after report completion and on an hourly background sweep. Retention does not change public history download limits or manual delete behavior.
+
 ## Validate via GET /api/ping
 
 ```bash

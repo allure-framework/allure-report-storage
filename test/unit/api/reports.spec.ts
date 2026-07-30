@@ -10,8 +10,8 @@ import { SqliteAccessTokenRepository } from "../../../src/repositories/sqlite/ac
 import { SqliteProjectRepository } from "../../../src/repositories/sqlite/projects.js";
 import { SqliteReportRepository } from "../../../src/repositories/sqlite/reports.js";
 import { FsStore } from "../../../src/storage/fs.js";
-import { formatReportCreatedAt } from "../../../src/utils/reports.js";
 import { historyFileName } from "../../../src/utils/path.js";
+import { formatReportCreatedAt } from "../../../src/utils/reports.js";
 
 const ACCESS_TOKEN = "test-bootstrap-token";
 const REPO = "qameta/allure-report-storage";
@@ -173,7 +173,82 @@ const writeHistoryPoint = (tempDir: string, reportId: string, point: string): vo
   fs.writeFileSync(filePath, JSON.stringify({ point }));
 };
 
+const expectHistoryPoints = async (app: TestApp, expected: string[], branch = "main", limit = 10): Promise<void> => {
+  const response = await requestAuthorized(
+    app,
+    `/api/history?repo=${encodeURIComponent(REPO)}&branch=${encodeURIComponent(branch)}&limit=${limit}`,
+  );
+
+  expect(response.status).toBe(200);
+  expect((await readJson<HistoryResponse>(response)).history.map((item) => item.point)).toEqual(expected);
+};
+
 describe("reports API", () => {
+  it("applies count retention per branch and keeps newest completed report", async () => {
+    await withApp(
+      async ({ app, tempDir }) => {
+        await publishHistoryPoint(app, "count-main-1", "main", "main-1");
+        await publishHistoryPoint(app, "count-main-2", "main", "main-2");
+        await publishHistoryPoint(app, "count-child-1", "child", "child-1");
+        await publishHistoryPoint(app, "count-main-3", "main", "main-3");
+
+        await expectHistoryPoints(app, ["main-3", "main-2"]);
+        await expectHistoryPoints(app, ["child-1"], "child", 1);
+        expect(fs.existsSync(historyPointPath(tempDir, "count-main-1"))).toBe(false);
+      },
+      { retentionPolicy: { maxReportsPerBranch: 2 } },
+    );
+  });
+
+  it("applies age retention and protects newest completed report", async () => {
+    await withApp(
+      async ({ app }) => {
+        await publishHistoryPoint(app, "age-main-1", "main", "age-1");
+        await new Promise((resolve) => setTimeout(resolve, 3));
+        await publishHistoryPoint(app, "age-main-2", "main", "age-2");
+
+        await expectHistoryPoints(app, ["age-2"]);
+      },
+      { retentionPolicy: { maxReportAgeMs: 1 } },
+    );
+
+    await withApp(
+      async ({ app }) => {
+        await publishHistoryPoint(app, "age-newest", "main", "newest");
+
+        await expectHistoryPoints(app, ["newest"]);
+      },
+      { retentionPolicy: { maxReportAgeMs: 0 } },
+    );
+  });
+
+  it("unions count and age retention candidates", async () => {
+    await withApp(
+      async ({ app }) => {
+        await publishHistoryPoint(app, "both-main-1", "main", "both-1");
+        await publishHistoryPoint(app, "both-main-2", "main", "both-2");
+        await new Promise((resolve) => setTimeout(resolve, 3));
+        await publishHistoryPoint(app, "both-main-3", "main", "both-3");
+
+        await expectHistoryPoints(app, ["both-3"]);
+      },
+      { retentionPolicy: { maxReportAgeMs: 1, maxReportsPerBranch: 2 } },
+    );
+  });
+
+  it("does not clamp history limit to retention count", async () => {
+    await withApp(
+      async ({ app }) => {
+        await publishHistoryPoint(app, "history-limit-1", "main", "limit-1");
+        await publishHistoryPoint(app, "history-limit-2", "main", "limit-2");
+        await publishHistoryPoint(app, "history-limit-3", "main", "limit-3");
+
+        await expectHistoryPoints(app, ["limit-3", "limit-2", "limit-1"], "main", 3);
+      },
+      { retentionPolicy: { maxReportsPerBranch: 5 } },
+    );
+  });
+
   it("protects report and asset mutation endpoints", async () => {
     await withApp(async ({ app }) => {
       let response = await app.request("/api/ping");
@@ -458,10 +533,7 @@ describe("reports API", () => {
       const reportDir = path.join(tempDir, "files", "batch-invalid");
 
       response = await requestAuthorized(app, "/api/reports/batch-invalid/upload", {
-        body: createBatchUploadFormData([
-          { filename: "ok.txt", file: "ok" },
-          { filename: "missing.txt" },
-        ]),
+        body: createBatchUploadFormData([{ filename: "ok.txt", file: "ok" }, { filename: "missing.txt" }]),
         method: "POST",
       });
       expect(response.status).toBe(400);
@@ -831,6 +903,48 @@ describe("reports API", () => {
       expect(response.status).toBe(404);
       expect((await readJson(response)).error).toBe("report not found");
     });
+  });
+
+  it("deletes report row before cleaning files on manual delete", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "report-storage-delete-fail-test-"));
+
+    class FailingDeleteStore extends FsStore {
+      async delete(reportId: string): Promise<void> {
+        if (reportId === "delete-atomic") {
+          throw new Error("file delete failed");
+        }
+
+        await super.delete(reportId);
+      }
+    }
+
+    try {
+      await withApp(
+        async ({ app }) => {
+          let response = await requestAuthorized(app, "/api/reports/delete-atomic", {
+            method: "PUT",
+            ...jsonBody({ repo: REPO, branch: "main", name: "Deleted report" }),
+          });
+          expect(response.status).toBe(200);
+
+          response = await requestAuthorized(app, "/api/reports/delete-atomic/complete", {
+            method: "POST",
+            ...jsonBody({ historyPoint: {} }),
+          });
+          expect(response.status).toBe(200);
+
+          response = await requestAuthorized(app, "/api/report/delete-atomic/delete", { method: "POST" });
+          expect(response.status).toBe(500);
+
+          response = await requestAuthorized(app, "/api/report/delete-atomic/delete", { method: "POST" });
+          expect(response.status).toBe(404);
+          expect((await readJson(response)).error).toBe("report not found");
+        },
+        { fileStore: new FailingDeleteStore(path.join(tempDir, "files")) },
+      );
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   it("returns branch history with main branch fallback", async () => {

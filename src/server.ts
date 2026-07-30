@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import { S3Client } from "@aws-sdk/client-s3";
+import { schedule, type ScheduledTask } from "node-cron";
 
 import { buildApp } from "./app.js";
 import type { StaticFileStore } from "./model.js";
@@ -9,6 +10,7 @@ import { SqliteProjectRepository } from "./repositories/sqlite/projects.js";
 import { SqliteReportRepository } from "./repositories/sqlite/reports.js";
 import { FsStore } from "./storage/fs.js";
 import { S3Store } from "./storage/s3.js";
+import { cleanupReportRetention, parseRetentionPolicy } from "./utils/retention.js";
 
 const port = Number(process.env.PORT ?? "3000");
 const host = process.env.HOST ?? "0.0.0.0";
@@ -18,6 +20,7 @@ const databasePath = process.env.DATABASE_PATH?.trim() || path.join(dataDir, "re
 const mainBranch = process.env.MAIN_BRANCH?.trim() || "main";
 const secret = process.env.SECRET;
 const storageBackend = (process.env.STORAGE_BACKEND ?? process.env.STORAGE_TYPE ?? "fs").trim().toLowerCase();
+const retentionPolicy = parseRetentionPolicy((name) => process.env[name]);
 
 const optionalEnv = (name: string): string | undefined => process.env[name]?.trim() || undefined;
 
@@ -140,6 +143,29 @@ const createFileStore = (): StaticFileStore => {
   throw new Error(`Unsupported STORAGE_BACKEND value: ${storageBackend}`);
 };
 
+const startRetentionSweep = (input: {
+  fileStore: StaticFileStore;
+  repositories: Parameters<typeof cleanupReportRetention>[0]["repositories"];
+}): ScheduledTask | undefined => {
+  if (retentionPolicy.maxReportsPerBranch === undefined && retentionPolicy.maxReportAgeMs === undefined) {
+    return undefined;
+  }
+
+  const sweep = async () => {
+    try {
+      await cleanupReportRetention({ ...input, policy: retentionPolicy });
+    } catch (error: unknown) {
+      console.error("report retention sweep failed", error);
+    }
+  };
+
+  const task = schedule("0 * * * *", sweep, { name: "report-retention-sweep", noOverlap: true, unref: true });
+
+  void task.execute();
+
+  return task;
+};
+
 const main = async (): Promise<void> => {
   if (typeof accessToken !== "string" || accessToken.trim().length === 0) {
     throw new Error("ACCESS_TOKEN environment variable is required");
@@ -155,7 +181,9 @@ const main = async (): Promise<void> => {
     reports: await SqliteReportRepository.create({ databasePath }),
   };
   const fileStore = createFileStore();
-  const app = await buildApp({ repositories, fileStore, accessToken, mainBranch, secret });
+  const app = await buildApp({ repositories, fileStore, accessToken, mainBranch, retentionPolicy, secret });
+
+  startRetentionSweep({ fileStore, repositories });
 
   await app.listen({ port, host });
 };

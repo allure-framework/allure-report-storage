@@ -19,6 +19,20 @@ const executionContext = {
   waitUntil() {},
 };
 
+const createAwaitableExecutionContext = () => {
+  const promises: Promise<unknown>[] = [];
+
+  return {
+    context: {
+      passThroughOnException() {},
+      waitUntil(promise: Promise<unknown>) {
+        promises.push(promise);
+      },
+    },
+    wait: () => Promise.all(promises),
+  };
+};
+
 const jsonBody = (payload: unknown): Pick<RequestInit, "body" | "headers"> => ({
   body: JSON.stringify(payload),
   headers: { "content-type": "application/json" },
@@ -95,5 +109,38 @@ describe("Cloudflare Worker entrypoint", () => {
 
     expect(response.status).toBe(200);
     expect(await response.text()).toContain("worker");
+  });
+
+  it("runs scheduled retention sweep and preserves branch newest report", async () => {
+    const env = createEnv();
+    const accessToken = await createAccessToken(env);
+
+    for (const reportId of ["scheduled-1", "scheduled-2", "scheduled-3"] as const) {
+      let response = await request(env, `/api/reports/${reportId}`, accessToken, {
+        method: "PUT",
+        ...jsonBody({ branch: "main", repo: "qameta/allure-report-storage" }),
+      });
+      expect(response.status).toBe(200);
+
+      response = await request(env, `/api/reports/${reportId}/complete`, accessToken, {
+        method: "POST",
+        ...jsonBody({ historyPoint: { id: reportId } }),
+      });
+      expect(response.status).toBe(200);
+
+      await new Promise((resolve) => setTimeout(resolve, 2));
+    }
+
+    env.REPORT_RETENTION_MAX_REPORTS_PER_BRANCH = "1";
+
+    const scheduledContext = createAwaitableExecutionContext();
+
+    await worker.scheduled({} as ScheduledController, env, scheduledContext.context as ExecutionContext);
+    await scheduledContext.wait();
+
+    const response = await request(env, "/api/history?repo=qameta%2Fallure-report-storage", accessToken);
+
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as { history: Array<{ id: string }> }).history).toEqual([{ id: "scheduled-3" }]);
   });
 });
