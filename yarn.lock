@@ -2578,6 +2578,7 @@ __metadata:
     hono: "npm:^4.12.29"
     kysely: "npm:^0.29.4"
     lefthook: "npm:^2.1.10"
+    node-cron: "npm:^4.6.0"
     oxfmt: "npm:0.58.0"
     oxlint: "npm:1.74.0"
     rimraf: "npm:^6.0.1"
@@ -4336,6 +4337,13 @@ __metadata:
   version: 2.6.2
   resolution: "neo-async@npm:2.6.2"
   checksum: 10/1a7948fea86f2b33ec766bc899c88796a51ba76a4afc9026764aedc6e7cde692a09067031e4a1bf6db4f978ccd99e7f5b6c03fe47ad9865c3d4f99050d67e002
+  languageName: node
+  linkType: hard
+
+"node-cron@npm:^4.6.0":
+  version: 4.6.0
+  resolution: "node-cron@npm:4.6.0"
+  checksum: 10/87a996b7aa69886bc2e5e9b922ab5edb195b7e21808a22b65cf8c268c90f9002038b74ffef9372ac4f0d499991e0180a887a92444310c3e9d0498c277daa5b89
   languageName: node
   linkType: hard
 

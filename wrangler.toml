@@ -2,6 +2,10 @@ name = "allure-report-storage"
 main = "src/worker.ts"
 compatibility_date = "2026-05-06"
 
+[triggers]
+# Runs scheduled report retention cleanup. Retention stays disabled unless vars below are set.
+crons = ["0 3 * * *"]
+
 [[d1_databases]]
 binding = "REPORTS_DB"
 database_name = "allure-report-storage"
@@ -15,3 +19,6 @@ bucket_name = "allure-report-storage"
 ACCESS_TOKEN = "change-me"
 MAIN_BRANCH = "main"
 SECRET = "change-me-secret"
+# Optional report retention. Uncomment to enable.
+# REPORT_RETENTION_MAX_REPORTS_PER_BRANCH = "20"
+# REPORT_RETENTION_MAX_REPORT_AGE_DAYS = "30"

@@ -8,8 +8,8 @@ const deleteReportAndFiles = async (
   reportsRepository: ReportRepository,
   report: Report,
 ): Promise<void> => {
-  await reportsRepository.delete(report.id);
   await Promise.all([fileStore.delete(report.id), fileStore.deleteHistory(report.id)]);
+  await reportsRepository.delete(report.id);
 };
 
 export const readHistoryDataPoint = async (

@@ -26,6 +26,11 @@ export interface Project {
   mainBranch: string;
 }
 
+export interface RetentionPolicy {
+  maxReportsPerBranch?: number;
+  maxReportAgeMs?: number;
+}
+
 export interface AccessTokensTable {
   id: string;
   access_token_hash: string;
@@ -63,6 +68,7 @@ export interface AppVariables {
   fileStore: StaticFileStore;
   mainBranch: string;
   repositories: Repositories;
+  retentionPolicy: RetentionPolicy;
   secret: string;
 }
 
@@ -78,6 +84,7 @@ export interface AppContextOptions {
   fileStore: StaticFileStore;
   mainBranch?: string;
   repositories: Repositories;
+  retentionPolicy?: RetentionPolicy;
   secret: string;
 }
 
@@ -107,6 +114,8 @@ export type WorkerBindings = Omit<WorkerEnv, "ACCESS_TOKEN" | "MAIN_BRANCH" | "S
   R2_ASSETS_PREFIX?: string;
   R2_PREFIX?: string;
   R2_REPORTS_PREFIX?: string;
+  REPORT_RETENTION_MAX_REPORT_AGE_DAYS?: string;
+  REPORT_RETENTION_MAX_REPORTS_PER_BRANCH?: string;
   SECRET?: string;
 };
 

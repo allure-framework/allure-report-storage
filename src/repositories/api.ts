@@ -18,6 +18,14 @@ export interface ListReportsQuery {
   limit?: number;
 }
 
+export interface ListRetentionCandidatesQuery {
+  repo?: string;
+  branch?: string;
+  maxReportsPerBranch?: number;
+  maxReportAgeMs?: number;
+  now?: Date;
+}
+
 export interface ListHistoryQuery {
   repo: string;
   branch: string;
@@ -62,8 +70,11 @@ export interface ReportRepository {
   createOrUpdateDraft(input: CreateOrUpdateDraftInput): Promise<CreateOrUpdateDraftResult>;
   complete(reportId: string): Promise<CompleteReportResult>;
   delete(reportId: string): Promise<boolean>;
+  deleteRetentionCandidate(report: Report): Promise<boolean>;
   listHistory(query: ListHistoryQuery): Promise<Report[]>;
   listCompleted(query: ListReportsQuery): Promise<Report[]>;
+  listRetentionCandidates(query: ListRetentionCandidatesQuery): Promise<Report[]>;
+  listCompletedScopes(): Promise<Array<{ branch: string; repo: string }>>;
   findLatestByRepoAndBranch(repo: string, branch: string): Promise<Report | null>;
   close(): Promise<void>;
 }

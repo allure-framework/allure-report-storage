@@ -106,6 +106,55 @@ describe("D1ReportRepository", () => {
     }
   });
 
+  it("lists retention candidates through D1 select queries", async () => {
+    const database = new MemoryD1Database();
+    const repository = await D1ReportRepository.create({ database });
+
+    try {
+      for (const reportId of ["retention-1", "retention-2", "retention-3"] as const) {
+        await repository.createOrUpdateDraft({
+          branch: "main",
+          repo: "qameta/allure-report-storage",
+          reportId,
+        });
+        await repository.complete(reportId);
+        await pauseForOrdering();
+      }
+
+      const candidates = await repository.listRetentionCandidates({ maxReportsPerBranch: 1 });
+
+      expect(candidates.map((report) => report.id)).toEqual(["retention-2", "retention-1"]);
+    } finally {
+      database.close();
+    }
+  });
+
+  it("does not delete a retention candidate that became branch latest", async () => {
+    const database = new MemoryD1Database();
+    const repository = await D1ReportRepository.create({ database });
+
+    try {
+      for (const reportId of ["race-1", "race-2"] as const) {
+        await repository.createOrUpdateDraft({
+          branch: "main",
+          repo: "qameta/allure-report-storage",
+          reportId,
+        });
+        await repository.complete(reportId);
+        await pauseForOrdering();
+      }
+
+      const candidate = (await repository.findById("race-1"))!;
+
+      await repository.delete("race-2");
+
+      expect(await repository.deleteRetentionCandidate(candidate)).toBe(false);
+      expect(await repository.findById("race-1")).not.toBeNull();
+    } finally {
+      database.close();
+    }
+  });
+
   it("stores project main branch metadata", async () => {
     const database = new MemoryD1Database();
     const repository = await D1ProjectRepository.create({ database });
@@ -115,7 +164,10 @@ describe("D1ReportRepository", () => {
 
       expect(created).toMatchObject({ mainBranch: "trunk", repo: "qameta/allure-report-storage" });
 
-      const updated = await repository.upsertMainBranch({ mainBranch: "release", repo: "qameta/allure-report-storage" });
+      const updated = await repository.upsertMainBranch({
+        mainBranch: "release",
+        repo: "qameta/allure-report-storage",
+      });
 
       expect(updated).toMatchObject({ mainBranch: "release", repo: "qameta/allure-report-storage" });
       expect(await repository.findByRepo("qameta/allure-report-storage")).toMatchObject({

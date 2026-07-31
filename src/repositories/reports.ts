@@ -1,4 +1,4 @@
-import type { Kysely } from "kysely";
+import { sql, type Kysely } from "kysely";
 
 import type { AllureReportStorageDatabase, Report, ReportsTable } from "../model.js";
 import type {
@@ -7,6 +7,7 @@ import type {
   CreateOrUpdateDraftResult,
   ListHistoryQuery,
   ListReportsQuery,
+  ListRetentionCandidatesQuery,
   ReportRepository,
 } from "./api.js";
 
@@ -18,6 +19,19 @@ const toIsoString = (value: Date | string | null): string | null => {
   }
 
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+};
+
+const MAX_DATE_TIME = 8_640_000_000_000_000;
+
+const toRetentionThresholdIso = (query: ListRetentionCandidatesQuery): string => {
+  const threshold = (query.now ?? new Date()).getTime() - (query.maxReportAgeMs ?? 0);
+  const thresholdDate = new Date(threshold);
+
+  if (!Number.isFinite(threshold) || Math.abs(threshold) > MAX_DATE_TIME || Number.isNaN(thresholdDate.getTime())) {
+    throw new Error("Retention age threshold is outside supported Date range");
+  }
+
+  return thresholdDate.toISOString();
 };
 
 const mapRowToReport = (row: ReportsTable): Report => ({
@@ -119,6 +133,39 @@ export class KyselyReportRepository implements ReportRepository {
     return Number(result.numDeletedRows) > 0;
   }
 
+  async deleteRetentionCandidate(report: Report): Promise<boolean> {
+    if (report.completedAt === null) {
+      return false;
+    }
+
+    const result = await this.db
+      .deleteFrom("reports")
+      .where("id", "=", report.id)
+      .where("status", "=", "completed")
+      .where((eb) =>
+        eb.exists(
+          eb
+            .selectFrom("reports as newer_reports")
+            .select("newer_reports.id")
+            .whereRef("newer_reports.repo", "=", "reports.repo")
+            .whereRef("newer_reports.branch", "=", "reports.branch")
+            .where("newer_reports.status", "=", "completed")
+            .where((innerEb) =>
+              innerEb.or([
+                innerEb("newer_reports.completed_at", ">", report.completedAt),
+                innerEb.and([
+                  innerEb("newer_reports.completed_at", "=", report.completedAt),
+                  innerEb("newer_reports.id", ">", report.id),
+                ]),
+              ]),
+            ),
+        ),
+      )
+      .executeTakeFirst();
+
+    return Number(result.numDeletedRows) > 0;
+  }
+
   async listHistory(query: ListHistoryQuery): Promise<Report[]> {
     const branchRows = await this.selectCompletedBranchHistory(query.repo, query.branch, query.limit);
 
@@ -181,6 +228,65 @@ export class KyselyReportRepository implements ReportRepository {
     return rows.map(mapRowToReport);
   }
 
+  async listRetentionCandidates(query: ListRetentionCandidatesQuery): Promise<Report[]> {
+    if (query.maxReportsPerBranch === undefined && query.maxReportAgeMs === undefined) {
+      return [];
+    }
+
+    let rankedReports = this.db
+      .selectFrom("reports")
+      .selectAll()
+      .select(
+        sql<number>`row_number() over (partition by repo, branch order by completed_at desc, id desc)`.as(
+          "retention_rank",
+        ),
+      )
+      .where("status", "=", "completed");
+
+    if (query.repo) {
+      rankedReports = rankedReports.where("repo", "=", query.repo);
+    }
+
+    if (query.branch) {
+      rankedReports = rankedReports.where("branch", "=", query.branch);
+    }
+
+    const ageThreshold = query.maxReportAgeMs === undefined ? undefined : toRetentionThresholdIso(query);
+    const rows = await this.db
+      .selectFrom(rankedReports.as("ranked_reports"))
+      .select(["id", "repo", "branch", "name", "status", "created_at", "updated_at", "completed_at"])
+      .where("retention_rank", ">", 1)
+      .where((eb) => {
+        const predicates = [];
+
+        if (query.maxReportsPerBranch !== undefined) {
+          predicates.push(eb("retention_rank", ">", Math.max(query.maxReportsPerBranch, 1)));
+        }
+
+        if (ageThreshold !== undefined) {
+          predicates.push(eb("completed_at", "<", ageThreshold));
+        }
+
+        return eb.or(predicates);
+      })
+      .orderBy("repo")
+      .orderBy("branch")
+      .orderBy("completed_at", "desc")
+      .orderBy("id", "desc")
+      .execute();
+
+    return rows.map(mapRowToReport);
+  }
+
+  async listCompletedScopes(): Promise<Array<{ branch: string; repo: string }>> {
+    return this.db
+      .selectFrom("reports")
+      .select(["repo", "branch"])
+      .distinct()
+      .where("status", "=", "completed")
+      .execute();
+  }
+
   async findLatestByRepoAndBranch(repo: string, branch: string): Promise<Report | null> {
     const row = await this.db
       .selectFrom("reports")
@@ -215,6 +321,13 @@ export class KyselyReportRepository implements ReportRepository {
       .ifNotExists()
       .on("reports")
       .columns(["status", "repo", "branch", "completed_at"])
+      .execute();
+
+    await this.db.schema
+      .createIndex("reports_completed_repo_branch_id_lookup_idx")
+      .ifNotExists()
+      .on("reports")
+      .columns(["status", "repo", "branch", "completed_at", "id"])
       .execute();
   }
 

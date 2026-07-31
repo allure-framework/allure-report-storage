@@ -31,14 +31,15 @@ The Worker uses D1 + R2 by default. [S3-compatible storage](#s3-compatible_stora
 
 2. Update `database_id` in `wrangler.toml`.
 3. Set `ACCESS_TOKEN` and `SECRET` as vars or Worker secrets.
-4. Deploy the Worker:
+4. Keep or adjust the scheduled cron in `wrangler.toml`; it runs report retention cleanup for Workers.
+5. Deploy the Worker:
 
    ```bash
    corepack enable
    yarn dlx wrangler deploy
    ```
 
-5. Start locally if needed:
+6. Start locally if needed:
 
    ```bash
    corepack enable
@@ -68,6 +69,20 @@ S3_FORCE_PATH_STYLE=false
 ```
 
 Bucket-specific R2 endpoints are normalized internally.
+
+## Report retention
+
+Automated retention can delete old reports to reduce R2 storage costs. It is disabled by default and enabled only when at least one Worker var is set:
+
+```bash
+REPORT_RETENTION_MAX_REPORTS_PER_BRANCH=20
+REPORT_RETENTION_MAX_REPORT_AGE_DAYS=30
+```
+
+- `REPORT_RETENTION_MAX_REPORTS_PER_BRANCH`: keep newest completed reports per branch up to this positive integer limit, delete older ones.
+- `REPORT_RETENTION_MAX_REPORT_AGE_DAYS`: delete reports older than this positive number of days. The newest completed report per branch is always preserved.
+
+Both strategies can be enabled together. The Worker runs retention after report completion and through the scheduled cron in `wrangler.toml`. Retention does not change public history download limits or manual delete behavior.
 
 ## Validate via GET /api/ping
 

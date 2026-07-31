@@ -5,7 +5,6 @@ import { getMimeType } from "hono/utils/mime";
 
 import type { AppEnv, BuildHttpAppOptions } from "./model.js";
 import { createAccessTokenSecret, decodeAccessToken, encodeAccessToken, hashAccessToken } from "./utils/accessToken.js";
-import { getReportFile, resolveReportEntrypointUrl } from "./utils/reportFiles.js";
 import { listCompleteHistory, readHistoryDataPoint, resolveHistoryDataPoints } from "./utils/history.js";
 import {
   isApiPath,
@@ -18,6 +17,8 @@ import {
   tokensEqual,
   unauthorizedResponse,
 } from "./utils/http.js";
+import { normalizeUploadPath } from "./utils/path.js";
+import { getReportFile, resolveReportEntrypointUrl } from "./utils/reportFiles.js";
 import {
   buildReportFileUrl,
   buildReportUrl,
@@ -26,11 +27,29 @@ import {
   mapReport,
   renderReportsTreePage,
 } from "./utils/reports.js";
-import { normalizeUploadPath } from "./utils/path.js";
+import { cleanupReportRetentionScope } from "./utils/retention.js";
 
 type MultipartUploadItem = {
   file: Blob;
   path: string;
+};
+
+const runBestEffort = (promise: Promise<unknown>, executionContext?: ExecutionContext): void => {
+  const handled = promise.catch((error: unknown) => {
+    console.error("report retention cleanup failed", error);
+  });
+
+  if (executionContext) {
+    executionContext.waitUntil(handled);
+  }
+};
+
+const getExecutionContext = (context: { executionCtx?: ExecutionContext }): ExecutionContext | undefined => {
+  try {
+    return context.executionCtx;
+  } catch {
+    return undefined;
+  }
 };
 
 const parseMultipartUploadBody = (
@@ -99,6 +118,7 @@ export const createHttpApp = <Bindings extends object = Record<string, never>>(
     c.set("fileStore", appContext.fileStore);
     c.set("mainBranch", normalizeMainBranch(appContext.mainBranch));
     c.set("repositories", appContext.repositories);
+    c.set("retentionPolicy", appContext.retentionPolicy ?? {});
     c.set("secret", requireEnvValue(appContext.secret, "SECRET"));
 
     return next();
@@ -346,6 +366,17 @@ export const createHttpApp = <Bindings extends object = Record<string, never>>(
       return c.json({ error: "report already completed" }, 409);
     }
 
+    runBestEffort(
+      cleanupReportRetentionScope({
+        branch: result.report.branch,
+        fileStore,
+        policy: c.get("retentionPolicy"),
+        repo: result.report.repo,
+        reportsRepository,
+      }),
+      getExecutionContext(c as { executionCtx?: ExecutionContext }),
+    );
+
     return c.json({ report: mapReport(result.report) }, 200);
   });
 
@@ -397,7 +428,12 @@ export const createHttpApp = <Bindings extends object = Record<string, never>>(
       const dataPoint = await readHistoryDataPoint(fileStore, report);
 
       if (!dataPoint) {
-        reports = await listCompleteHistory(reportsRepository, { repo, branch, fallbackBranch: projectMainBranch, limit });
+        reports = await listCompleteHistory(reportsRepository, {
+          repo,
+          branch,
+          fallbackBranch: projectMainBranch,
+          limit,
+        });
 
         const resolvedHistory = await resolveHistoryDataPoints(fileStore, reportsRepository, reports, branch);
 
