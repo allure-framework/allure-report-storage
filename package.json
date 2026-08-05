@@ -23,7 +23,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1096.0",
     "@hono/node-server": "^2.0.10",
-    "hono": "^4.12.32",
+    "hono": "4.12.34",
     "kysely": "^0.29.4",
     "node-cron": "^4.6.0"
   },
@@ -45,11 +45,12 @@
     "dompurify": "3.4.12",
     "fast-xml-builder": "1.2.0",
     "fast-xml-parser": "5.10.1",
-    "ip-address": "10.2.0",
+    "ip-address": "10.3.1",
     "linkify-it": "5.0.2",
     "postcss": "8.5.25",
+    "undici": "7.29.0",
     "sharp": "0.35.0",
-    "tar": "7.5.19",
+    "tar": "7.5.21",
     "vite": "8.0.16"
   },
   "packageManager": "yarn@4.5.1"
