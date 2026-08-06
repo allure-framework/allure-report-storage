@@ -37,12 +37,9 @@ jobs:
           load: true
           push: false
           tags: ${{ env.IMAGE_NAME }}:${{ env.RELEASE_TAG }}
-      - uses: docker/oidc-action@v1
-        id: docker-oidc
+      - uses: docker/login-action@v4
+        env:
+          DOCKERHUB_OIDC_CONNECTIONID: ${{ vars.DOCKERHUB_OIDC_CONNECTION_ID }}
         with:
-          connection_id: 60874ab1-3dcc-4ecb-b4ad-d96f4595637e
-      - uses: docker/login-action@v3
-        with:
-          username: allure
-          password: ${{ steps.docker-oidc.outputs.token }}
+          username: ${{ vars.DOCKERHUB_ORGANIZATION }}
       - run: docker push ${{ env.IMAGE_NAME }}:${{ env.RELEASE_TAG }}
