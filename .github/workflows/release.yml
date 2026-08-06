@@ -8,25 +8,31 @@ on:
         description: "The release version in <MAJOR>.<MINOR>.<PATCH> format"
         required: true
 
-permissions:
-  contents: write
-
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
+      - name: Fail if not main
+        if: github.ref_name != 'main'
+        run: exit 1
       - name: Check release version
         run: |
           expr "${{ github.event.inputs.releaseVersion }}" : '\(^[1-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\(-beta\.[0-9][0-9]*\)\{0,1\}\)$'
       - uses: actions/checkout@v7
+        with:
+          ref: main
       - name: Configure CI git user
         run: |
           git config --global user.name github-actions[bot]
           git config --global user.email github-actions[bot]@users.noreply.github.com
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: "yarn"
+      - name: Enable Corepack
+        run: corepack enable
       - name: Install dependencies
         run: yarn install --immutable --immutable-cache --check-cache
       - name: Set release version
@@ -51,8 +57,8 @@ jobs:
   publish:
     needs: release
     uses: ./.github/workflows/publish.yml
+    permissions:
+      contents: read
+      id-token: write
     with:
       release_tag: v${{ inputs.releaseVersion }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
