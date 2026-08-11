@@ -27,7 +27,7 @@ jobs:
       RELEASE_TAG: ${{ inputs.release_tag || github.event.release.tag_name }}
       IMAGE_NAME: allure/allure-report-storage
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.release_tag || github.event.release.tag_name }}
       - uses: docker/build-push-action@v7
