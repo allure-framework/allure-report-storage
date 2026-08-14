@@ -21,7 +21,7 @@
     "start": "node ./dist/server.js"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1106.0",
+    "@aws-sdk/client-s3": "^3.1107.0",
     "@hono/node-server": "^2.1.0",
     "hono": "4.12.34",
     "kysely": "^0.29.4",
