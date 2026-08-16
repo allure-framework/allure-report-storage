@@ -19,6 +19,7 @@ const accessToken = process.env.ACCESS_TOKEN;
 const databasePath = process.env.DATABASE_PATH?.trim() || path.join(dataDir, "reports.sqlite");
 const mainBranch = process.env.MAIN_BRANCH?.trim() || "main";
 const secret = process.env.SECRET;
+const publicUrl = process.env.PUBLIC_URL?.trim() || undefined;
 const storageBackend = (process.env.STORAGE_BACKEND ?? process.env.STORAGE_TYPE ?? "fs").trim().toLowerCase();
 const retentionPolicy = parseRetentionPolicy((name) => process.env[name]);
 
@@ -181,7 +182,7 @@ const main = async (): Promise<void> => {
     reports: await SqliteReportRepository.create({ databasePath }),
   };
   const fileStore = createFileStore();
-  const app = await buildApp({ repositories, fileStore, accessToken, mainBranch, retentionPolicy, secret });
+  const app = await buildApp({ repositories, fileStore, accessToken, mainBranch, publicUrl, retentionPolicy, secret });
 
   startRetentionSweep({ fileStore, repositories });
 

@@ -35,6 +35,7 @@ const createContext = async (env: WorkerBindings) => ({
     reportsPrefix: optionalString(env.R2_REPORTS_PREFIX),
   }),
   mainBranch: optionalString(env.MAIN_BRANCH),
+  publicUrl: optionalString(env.PUBLIC_URL),
   repositories: {
     accessTokens: await D1AccessTokenRepository.create({
       database: requiredBinding(env.REPORTS_DB, "REPORTS_DB"),

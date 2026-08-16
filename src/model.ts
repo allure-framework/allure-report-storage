@@ -67,6 +67,7 @@ export interface AppVariables {
   accessToken: string;
   fileStore: StaticFileStore;
   mainBranch: string;
+  publicUrl?: string;
   repositories: Repositories;
   retentionPolicy: RetentionPolicy;
   secret: string;
@@ -83,6 +84,12 @@ export interface AppContextOptions {
   accessToken: string;
   fileStore: StaticFileStore;
   mainBranch?: string;
+  /**
+   * Explicit public origin (e.g. "https://reports.example.com") embedded in
+   * minted access tokens. When unset, the origin is derived from the request,
+   * honoring X-Forwarded-Proto/X-Forwarded-Host set by a fronting proxy.
+   */
+  publicUrl?: string;
   repositories: Repositories;
   retentionPolicy?: RetentionPolicy;
   secret: string;
@@ -111,6 +118,7 @@ export type BuildHttpAppOptions<Bindings extends object = Record<string, never>>
 export type WorkerBindings = Omit<WorkerEnv, "ACCESS_TOKEN" | "MAIN_BRANCH" | "SECRET"> & {
   ACCESS_TOKEN?: string;
   MAIN_BRANCH?: string;
+  PUBLIC_URL?: string;
   R2_ASSETS_PREFIX?: string;
   R2_PREFIX?: string;
   R2_REPORTS_PREFIX?: string;

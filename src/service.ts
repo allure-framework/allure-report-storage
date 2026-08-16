@@ -1,3 +1,4 @@
+import type { Context } from "hono";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { logger } from "hono/logger";
@@ -102,6 +103,38 @@ const parseMultipartUploadBody = (
   };
 };
 
+const firstForwardedValue = (value: string | undefined): string | undefined =>
+  value?.split(",")[0]?.trim() || undefined;
+
+/**
+ * The origin embedded in minted access tokens. Behind a TLS-terminating
+ * proxy the raw request URL is the internal http:// origin, which bakes a
+ * broken url into every token (clients then get protocol-redirected and
+ * their POSTs method-downgraded). Precedence: explicit publicUrl option
+ * (PUBLIC_URL env) > X-Forwarded-Proto/X-Forwarded-Host > request origin.
+ */
+const resolvePublicOrigin = <Bindings extends object>(c: Context<AppEnv<Bindings>>): string => {
+  const configured = c.get("publicUrl");
+
+  if (configured) {
+    return new URL(configured).origin;
+  }
+
+  const requestUrl = new URL(c.req.url);
+  const forwardedHost = firstForwardedValue(c.req.header("x-forwarded-host"));
+  const forwardedProto = firstForwardedValue(c.req.header("x-forwarded-proto"));
+
+  if (forwardedHost) {
+    requestUrl.host = forwardedHost;
+  }
+
+  if (forwardedProto) {
+    requestUrl.protocol = `${forwardedProto}:`;
+  }
+
+  return requestUrl.origin;
+};
+
 export const createHttpApp = <Bindings extends object = Record<string, never>>(
   options: BuildHttpAppOptions<Bindings>,
 ) => {
@@ -118,6 +151,7 @@ export const createHttpApp = <Bindings extends object = Record<string, never>>(
     c.set("fileStore", appContext.fileStore);
     c.set("mainBranch", normalizeMainBranch(appContext.mainBranch));
     c.set("repositories", appContext.repositories);
+    c.set("publicUrl", appContext.publicUrl?.trim() || undefined);
     c.set("retentionPolicy", appContext.retentionPolicy ?? {});
     c.set("secret", requireEnvValue(appContext.secret, "SECRET"));
 
@@ -158,7 +192,7 @@ export const createHttpApp = <Bindings extends object = Record<string, never>>(
       return unauthorizedResponse(c);
     }
 
-    const url = new URL(c.req.url).origin;
+    const url = resolvePublicOrigin(c);
 
     const payload = {
       accessToken: createAccessTokenSecret(),
