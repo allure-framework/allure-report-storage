@@ -34,7 +34,7 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
       - name: Install dependencies
-        run: yarn install --immutable --immutable-cache --check-cache
+        run: yarn install --immutable --check-cache
       - name: Set release version
         run: npm version ${{ github.event.inputs.releaseVersion }} --no-git-tag-version
       - name: Commit release version and create tag
