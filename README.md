@@ -25,11 +25,11 @@ The service integrates seamlessly with Allure3, you just need to do these 4 simp
 
 ### Docker
 
-Continue reading [here](./docs/docker.md).
+Continue reading [here](https://github.com/allure-framework/allure-report-storage/blob/main/docs/docker.md).
 
 ### Cloudflare
 
-Continue reading [here](./docs/cloudflare.md).
+Continue reading [here](https://github.com/allure-framework/allure-report-storage/blob/main/docs/cloudflare.md).
 
 ## Usage
 
