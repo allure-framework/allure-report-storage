@@ -17,13 +17,36 @@ Use the Allure Report Storage service with Docker or Docker Compose.
 
 ## Start with Docker Compose
 
-- Add the required env vars directly in `compose.yaml` (or override them there); the compose file already defines defaults for `ACCESS_TOKEN` and `SECRET`.
-- `ACCESS_TOKEN` is the bootstrap bearer token for `POST /api/token`.
-- `SECRET` is the signing secret for generated access tokens.
-- Start the service:
+- Create a `compose.yaml` file. The service uses the published
+  [`allure/allure-report-storage`](https://hub.docker.com/r/allure/allure-report-storage) image, so cloning this repository or building the image locally is not required.
+
+  ```yaml
+  services:
+    app:
+      image: allure/allure-report-storage:v1.0.0
+      environment:
+        ACCESS_TOKEN: ${ACCESS_TOKEN:-change-me}
+        DATABASE_PATH: /data/reports.sqlite
+        DATA_DIR: /data
+        HOST: 0.0.0.0
+        MAIN_BRANCH: ${MAIN_BRANCH:-main}
+        PORT: 3000
+        SECRET: ${SECRET:-change-me-secret}
+      ports:
+        - "3000:3000"
+      restart: unless-stopped
+      volumes:
+        - report-data:/data
+
+  volumes:
+    report-data:
+  ```
+
+- Set `ACCESS_TOKEN` and `SECRET` to secure values. `ACCESS_TOKEN` is the bootstrap bearer token for `POST /api/token`; `SECRET` signs generated access tokens.
+- Start the published image:
 
   ```bash
-  docker compose up --build
+  docker compose up -d
   ```
 
 ## S3-Compatible Storage

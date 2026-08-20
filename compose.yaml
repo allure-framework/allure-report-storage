@@ -1,8 +1,6 @@
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: allure/allure-report-storage:v1.0.0
     environment:
       ACCESS_TOKEN: ${ACCESS_TOKEN:-change-me}
       DATABASE_PATH: /data/reports.sqlite
