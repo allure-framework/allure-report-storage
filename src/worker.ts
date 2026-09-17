@@ -4,6 +4,7 @@ import { D1ProjectRepository } from "./repositories/d1/projects.js";
 import { D1ReportRepository } from "./repositories/d1/reports.js";
 import { createHttpApp } from "./service.js";
 import { R2Store } from "./storage/r2.js";
+import { normalizePublicUrl } from "./utils/http.js";
 import { cleanupReportRetention, parseRetentionPolicy } from "./utils/retention.js";
 
 const requiredBinding = <T>(value: T | undefined, name: string): T => {
@@ -35,6 +36,7 @@ const createContext = async (env: WorkerBindings) => ({
     reportsPrefix: optionalString(env.R2_REPORTS_PREFIX),
   }),
   mainBranch: optionalString(env.MAIN_BRANCH),
+  publicUrl: normalizePublicUrl(env.PUBLIC_URL),
   repositories: {
     accessTokens: await D1AccessTokenRepository.create({
       database: requiredBinding(env.REPORTS_DB, "REPORTS_DB"),

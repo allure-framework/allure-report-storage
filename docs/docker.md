@@ -31,6 +31,7 @@ Use the Allure Report Storage service with Docker or Docker Compose.
         HOST: 0.0.0.0
         MAIN_BRANCH: ${MAIN_BRANCH:-main}
         PORT: 3000
+        PUBLIC_URL: ${PUBLIC_URL:-}
         SECRET: ${SECRET:-change-me-secret}
       ports:
         - "3000:3000"
@@ -43,6 +44,7 @@ Use the Allure Report Storage service with Docker or Docker Compose.
   ```
 
 - Set `ACCESS_TOKEN` and `SECRET` to secure values. `ACCESS_TOKEN` is the bootstrap bearer token for `POST /api/token`; `SECRET` signs generated access tokens.
+- If TLS terminates at a reverse proxy, set `PUBLIC_URL=https://reports.example.com` in the Compose environment (for example, in its `.env` file) before generating tokens. It overrides only the origin embedded in new tokens; see [Public URL](../README.md#public-url) for validation rules and token replacement steps.
 - Start the published image:
 
   ```bash
