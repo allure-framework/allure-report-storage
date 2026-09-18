@@ -42,6 +42,8 @@ curl -sS -X POST http://localhost:3000/api/token \
   -H "Authorization: Bearer storage_bootstrap_token"
 ```
 
+If the service is behind TLS termination or a reverse proxy, [set `PUBLIC_URL`](#public-url) before generating the token.
+
 Then use it in the Allure Report runtime config:
 
 ```diff
@@ -61,6 +63,20 @@ export default defineConfig({
 +  },
 });
 ```
+
+### Public URL
+
+`PUBLIC_URL` optionally overrides the origin embedded in newly generated `POST /api/token` access tokens. Set it when the request origin is not the public URL clients use, for example when TLS terminates at a reverse proxy:
+
+```bash
+PUBLIC_URL=https://reports.example.com
+```
+
+It does not change the server listening address or authentication. If it is unset, empty, or whitespace-only, the service uses the request origin instead.
+
+The value must be an absolute HTTP(S) origin. A port and trailing slash are accepted; outer whitespace is trimmed and the value is normalized to its URL origin. Credentials, a path other than `/`, a query, and a fragment are not allowed.
+
+Existing tokens retain the URL embedded when they were generated. Regenerate affected tokens after setting `PUBLIC_URL`, then replace them in client and CI configuration.
 
 ### Main branch selection
 

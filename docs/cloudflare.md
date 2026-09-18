@@ -30,7 +30,14 @@ The Worker uses D1 + R2 by default. [S3-compatible storage](#s3-compatible_stora
    ```
 
 2. Update `database_id` in `wrangler.toml`.
-3. Set `ACCESS_TOKEN` and `SECRET` as vars or Worker secrets.
+3. Set `ACCESS_TOKEN` and `SECRET` as vars or Worker secrets. If the public Worker URL differs from the request origin, such as behind TLS termination, optionally add `PUBLIC_URL` under `wrangler.toml`'s `[vars]`:
+
+   ```toml
+   [vars]
+   PUBLIC_URL = "https://reports.example.com"
+   ```
+
+   It overrides only the origin embedded in newly generated tokens; see [Public URL](../README.md#public-url) for validation rules and regenerating existing tokens.
 4. Keep or adjust the scheduled cron in `wrangler.toml`; it runs report retention cleanup for Workers.
 5. Deploy the Worker:
 
