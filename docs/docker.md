@@ -51,6 +51,15 @@ Use the Allure Report Storage service with Docker or Docker Compose.
   docker compose up -d
   ```
 
+## Start the current checkout
+
+Use the development override to build and run the service from the current repository checkout instead of the
+published image:
+
+```bash
+docker compose -f compose.yaml -f compose-dev.yaml up --build
+```
+
 ## S3-Compatible Storage
 
 Use `STORAGE_BACKEND=s3` env variable if you want to use S3 storage instead of file system with:

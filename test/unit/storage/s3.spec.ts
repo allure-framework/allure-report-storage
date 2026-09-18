@@ -140,7 +140,7 @@ const expectBytes = async (actual: Promise<Uint8Array<ArrayBuffer> | null>, expe
 
 describe("S3Store", () => {
   it("stores and reads report files and shared assets", async () => {
-    const { client, objects } = createS3Client();
+    const { client, objects, send } = createS3Client();
     const store = new S3Store({
       assetsPrefix: "shared",
       bucket: "bucket",
@@ -152,7 +152,10 @@ describe("S3Store", () => {
     await store.put("r1", "index.html", new Uint8Array(Buffer.from("home")));
     await store.put("r1", "blob.txt", new Blob(["blob"]));
     await store.put("r1", "node.txt", Readable.from(["node"]));
-    await store.putAsset("app.js", new Blob(["asset"]).stream());
+    await store.putAsset("app.js", new Blob(["asset"]).stream(), {
+      contentLength: 5,
+      contentType: "application/javascript",
+    });
     await store.putHistory("r1", new TextEncoder().encode('{"point":"history"}'));
 
     expect(Array.from(objects.keys()).sort()).toEqual([
@@ -172,6 +175,16 @@ describe("S3Store", () => {
     expect(await store.get("r1", "missing.txt")).toBeNull();
     expect(await store.getAsset("missing.js")).toBeNull();
     expect(await store.getHistory("missing")).toBeNull();
+
+    const assetPut = send.mock.calls
+      .map(([command]) => command)
+      .find(
+        (command): command is PutObjectCommand =>
+          command instanceof PutObjectCommand && command.input.Key === "env/shared/app.js",
+      );
+
+    expect(assetPut?.input.ContentLength).toBe(5);
+    expect(assetPut?.input.ContentType).toBe("application/javascript");
 
     await store.deleteHistory("r1");
 

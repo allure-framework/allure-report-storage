@@ -110,7 +110,17 @@ export type BuildHttpAppOptions<Bindings extends object = Record<string, never>>
   | DynamicBuildAppOptions<Bindings>
   | StaticBuildAppOptions;
 
-export type WorkerBindings = Omit<WorkerEnv, "ACCESS_TOKEN" | "MAIN_BRANCH" | "SECRET"> & {
+type WorkerVariableName =
+  | "ACCESS_TOKEN"
+  | "MAIN_BRANCH"
+  | "R2_ASSETS_PREFIX"
+  | "R2_PREFIX"
+  | "R2_REPORTS_PREFIX"
+  | "REPORT_RETENTION_MAX_REPORT_AGE_DAYS"
+  | "REPORT_RETENTION_MAX_REPORTS_PER_BRANCH"
+  | "SECRET";
+
+export type WorkerBindings = Omit<WorkerEnv, WorkerVariableName> & {
   ACCESS_TOKEN?: string;
   MAIN_BRANCH?: string;
   PUBLIC_URL?: string;
@@ -124,8 +134,13 @@ export type WorkerBindings = Omit<WorkerEnv, "ACCESS_TOKEN" | "MAIN_BRANCH" | "S
 
 export type StaticFileData = Uint8Array | Blob | ReadableStream<Uint8Array> | NodeJS.ReadableStream;
 
+export interface StaticFileWriteOptions {
+  contentLength?: number;
+  contentType?: string;
+}
+
 export interface StaticFileStore {
-  put(reportId: string, relativePath: string, data: StaticFileData): Promise<void>;
+  put(reportId: string, relativePath: string, data: StaticFileData, options?: StaticFileWriteOptions): Promise<void>;
   get(reportId: string, relativePath: string): Promise<Uint8Array<ArrayBuffer> | null>;
   exists(reportId: string, relativePath: string): Promise<boolean>;
   list(reportId: string): Promise<string[]>;
@@ -133,6 +148,6 @@ export interface StaticFileStore {
   putHistory(reportId: string, data: StaticFileData): Promise<void>;
   getHistory(reportId: string): Promise<Uint8Array<ArrayBuffer> | null>;
   deleteHistory(reportId: string): Promise<void>;
-  putAsset(relativePath: string, data: StaticFileData): Promise<void>;
+  putAsset(relativePath: string, data: StaticFileData, options?: StaticFileWriteOptions): Promise<void>;
   getAsset(relativePath: string): Promise<Uint8Array<ArrayBuffer> | null>;
 }

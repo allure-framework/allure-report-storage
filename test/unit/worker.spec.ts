@@ -130,13 +130,15 @@ describe("Cloudflare Worker entrypoint", () => {
     });
     expect(response.status).toBe(200);
 
-    const formData = new FormData();
-    formData.set("filename", "index.html");
-    formData.set("file", new Blob(["<html>worker</html>"]), "index.html");
+    const reportFile = "<html>worker</html>";
 
-    response = await request(env, "/api/reports/r1/upload", accessToken, {
-      body: formData,
-      method: "POST",
+    response = await request(env, "/api/reports/r1/files?path=index.html", accessToken, {
+      body: reportFile,
+      headers: {
+        "content-length": String(Buffer.byteLength(reportFile)),
+        "content-type": "application/octet-stream",
+      },
+      method: "PUT",
     });
     expect(response.status).toBe(200);
 
@@ -154,6 +156,38 @@ describe("Cloudflare Worker entrypoint", () => {
 
     expect(response.status).toBe(200);
     expect(await response.text()).toContain("worker");
+    expect((env.REPORTS_DB as MemoryD1Database).preparedQueries.some((query) => /^\s*create\b/i.test(query))).toBe(
+      false,
+    );
+  });
+
+  it("maps transient R2 throttling to a retryable response", async () => {
+    const env = createEnv();
+    const accessToken = await createAccessToken(env);
+    let response = await request(env, "/api/reports/throttled", accessToken, {
+      method: "PUT",
+      ...jsonBody({ branch: "main", repo: "qameta/allure-report-storage" }),
+    });
+    expect(response.status).toBe(200);
+
+    env.REPORTS_BUCKET = Object.assign(new MemoryR2Bucket(), {
+      put: async () => {
+        throw new Error("put: Reduce your concurrent request rate for the same object. (10058)");
+      },
+    }) as R2Bucket;
+
+    response = await request(env, "/api/reports/throttled/files?path=index.html", accessToken, {
+      body: "content",
+      headers: {
+        "content-length": "7",
+        "content-type": "application/octet-stream",
+      },
+      method: "PUT",
+    });
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBe("1");
+    expect(await response.json()).toEqual({ error: "storage write is temporarily throttled" });
   });
 
   it("runs scheduled retention sweep and preserves branch newest report", async () => {

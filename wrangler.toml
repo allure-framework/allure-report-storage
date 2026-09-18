@@ -10,6 +10,7 @@ crons = ["0 3 * * *"]
 binding = "REPORTS_DB"
 database_name = "allure-report-storage"
 database_id = "replace-with-d1-database-id"
+migrations_dir = "migrations"
 
 [[r2_buckets]]
 binding = "REPORTS_BUCKET"

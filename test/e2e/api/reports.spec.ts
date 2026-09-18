@@ -24,6 +24,18 @@ const createUploadFormData = (filename: string, file: Buffer | string): FormData
   return formData;
 };
 
+const rawUpload = (content: Buffer | string): Pick<RequestInit, "body" | "headers"> => {
+  const body = Buffer.isBuffer(content) ? content : Buffer.from(content);
+
+  return {
+    body,
+    headers: {
+      "content-length": String(body.byteLength),
+      "content-type": "application/octet-stream",
+    },
+  };
+};
+
 describe("reports API e2e", () => {
   let harness: Awaited<ReturnType<typeof createE2eHarness>>;
 
@@ -64,6 +76,13 @@ describe("reports API e2e", () => {
     });
     expect(response.status).toBe(401);
 
+    response = await harness.request("/api/assets?path=app.js", {
+      method: "PUT",
+      token: null,
+      ...rawUpload("console.log('blocked');"),
+    });
+    expect(response.status).toBe(401);
+
     response = await harness.request("/api/assets/upload", {
       body: createUploadFormData("app.js", "console.log('blocked');"),
       method: "POST",
@@ -82,9 +101,9 @@ describe("reports API e2e", () => {
 
     const reportId = extractReportId((await readJson(response)).url);
 
-    response = await harness.request(`/api/reports/${encodeURIComponent(reportId)}/upload`, {
-      body: createUploadFormData("index.html", "<html><body>published</body></html>"),
-      method: "POST",
+    response = await harness.request(`/api/reports/${encodeURIComponent(reportId)}/files?path=index.html`, {
+      method: "PUT",
+      ...rawUpload("<html><body>published</body></html>"),
     });
     expect(response.status).toBe(200);
 

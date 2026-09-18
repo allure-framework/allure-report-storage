@@ -1,0 +1,8 @@
+services:
+  app:
+    build:
+      context: .
+    environment:
+      ACCESS_TOKEN: foo
+      SECRET: bar
+    image: allure-report-storage:dev

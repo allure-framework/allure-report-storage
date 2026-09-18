@@ -1,6 +1,7 @@
-import type { StaticFileData, StaticFileStore } from "../model.js";
+import type { StaticFileData, StaticFileStore, StaticFileWriteOptions } from "../model.js";
 import { joinObjectKey } from "../utils/commons.js";
 import { historyFileName } from "../utils/path.js";
+import { runR2Operation } from "./errors.js";
 
 type R2Payload = Parameters<R2Bucket["put"]>[1];
 
@@ -84,8 +85,13 @@ export class R2Store implements StaticFileStore {
     this.historyPrefix = options.historyPrefix ?? "history";
   }
 
-  async put(reportId: string, relativePath: string, data: StaticFileData): Promise<void> {
-    await this.putObject(this.reportObjectKey(reportId, relativePath), data);
+  async put(
+    reportId: string,
+    relativePath: string,
+    data: StaticFileData,
+    options?: StaticFileWriteOptions,
+  ): Promise<void> {
+    await this.putObject(this.reportObjectKey(reportId, relativePath), data, options);
   }
 
   async get(reportId: string, relativePath: string): Promise<Uint8Array<ArrayBuffer> | null> {
@@ -93,7 +99,9 @@ export class R2Store implements StaticFileStore {
   }
 
   async exists(reportId: string, relativePath: string): Promise<boolean> {
-    return (await this.options.bucket.head(this.reportObjectKey(reportId, relativePath))) !== null;
+    return (
+      (await runR2Operation(() => this.options.bucket.head(this.reportObjectKey(reportId, relativePath)))) !== null
+    );
   }
 
   async list(reportId: string): Promise<string[]> {
@@ -110,7 +118,7 @@ export class R2Store implements StaticFileStore {
     const keys = await this.listObjectKeys(this.reportPrefix(reportId));
 
     for (const keysChunk of chunk(keys, 1000)) {
-      await this.options.bucket.delete(keysChunk);
+      await runR2Operation(() => this.options.bucket.delete(keysChunk));
     }
   }
 
@@ -123,23 +131,26 @@ export class R2Store implements StaticFileStore {
   }
 
   async deleteHistory(reportId: string): Promise<void> {
-    await this.options.bucket.delete(this.historyObjectKey(reportId));
+    await runR2Operation(() => this.options.bucket.delete(this.historyObjectKey(reportId)));
   }
 
-  async putAsset(relativePath: string, data: StaticFileData): Promise<void> {
-    await this.putObject(this.assetObjectKey(relativePath), data);
+  async putAsset(relativePath: string, data: StaticFileData, options?: StaticFileWriteOptions): Promise<void> {
+    await this.putObject(this.assetObjectKey(relativePath), data, options);
   }
 
   async getAsset(relativePath: string): Promise<Uint8Array<ArrayBuffer> | null> {
     return this.getObject(this.assetObjectKey(relativePath));
   }
 
-  private async putObject(key: string, data: StaticFileData): Promise<void> {
-    await this.options.bucket.put(key, await toR2Payload(data));
+  private async putObject(key: string, data: StaticFileData, options?: StaticFileWriteOptions): Promise<void> {
+    const payload = await toR2Payload(data);
+    const putOptions = options?.contentType ? { httpMetadata: { contentType: options.contentType } } : undefined;
+
+    await runR2Operation(() => this.options.bucket.put(key, payload, putOptions));
   }
 
   private async getObject(key: string): Promise<Uint8Array<ArrayBuffer> | null> {
-    const object = await this.options.bucket.get(key);
+    const object = await runR2Operation(() => this.options.bucket.get(key));
 
     if (!object) {
       return null;
@@ -153,7 +164,7 @@ export class R2Store implements StaticFileStore {
     let cursor: string | undefined;
 
     do {
-      const result = await this.options.bucket.list({ cursor, prefix });
+      const result = await runR2Operation(() => this.options.bucket.list({ cursor, prefix }));
 
       keys.push(...result.objects.map((object) => object.key));
       cursor = result.truncated ? result.cursor : undefined;
