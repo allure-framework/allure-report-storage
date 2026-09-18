@@ -24,7 +24,7 @@
     "@aws-sdk/client-s3": "^3.1131.0",
     "@hono/node-server": "^2.1.0",
     "hono": "4.13.1",
-    "kysely": "^0.29.4",
+    "kysely": "^0.29.5",
     "node-cron": "^4.6.0"
   },
   "devDependencies": {
