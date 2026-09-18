@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -5,7 +6,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 
-import type { StaticFileData, StaticFileStore } from "../model.js";
+import type { StaticFileData, StaticFileStore, StaticFileWriteOptions } from "../model.js";
 import { historyFileName } from "../utils/path.js";
 
 const isWebReadableStream = (data: StaticFileData): data is ReadableStream<Uint8Array> =>
@@ -26,15 +27,34 @@ const toNodeReadable = (data: Exclude<StaticFileData, Uint8Array>): NodeJS.Reada
   return data;
 };
 
-const writeStaticFile = async (fullPath: string, data: StaticFileData): Promise<void> => {
-  fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+const writeStaticFile = async (
+  fullPath: string,
+  data: StaticFileData,
+  options?: StaticFileWriteOptions,
+): Promise<void> => {
+  await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
 
-  if (data instanceof Uint8Array) {
-    await fs.promises.writeFile(fullPath, data);
-    return;
+  const temporaryPath = `${fullPath}.${randomUUID()}.tmp`;
+
+  try {
+    if (data instanceof Uint8Array) {
+      await fs.promises.writeFile(temporaryPath, data);
+    } else {
+      await pipeline(toNodeReadable(data), fs.createWriteStream(temporaryPath));
+    }
+
+    if (options?.contentLength !== undefined) {
+      const stats = await fs.promises.stat(temporaryPath);
+
+      if (stats.size !== options.contentLength) {
+        throw new Error(`uploaded file size mismatch: expected ${options.contentLength}, received ${stats.size}`);
+      }
+    }
+
+    await fs.promises.rename(temporaryPath, fullPath);
+  } finally {
+    await fs.promises.rm(temporaryPath, { force: true });
   }
-
-  await pipeline(toNodeReadable(data), fs.createWriteStream(fullPath));
 };
 
 export class FsStore implements StaticFileStore {
@@ -44,10 +64,15 @@ export class FsStore implements StaticFileStore {
     private readonly historyDir = path.join(path.dirname(baseDir), "history"),
   ) {}
 
-  async put(reportId: string, relativePath: string, data: StaticFileData): Promise<void> {
+  async put(
+    reportId: string,
+    relativePath: string,
+    data: StaticFileData,
+    options?: StaticFileWriteOptions,
+  ): Promise<void> {
     const fullPath = this.resolvePath(reportId, relativePath);
 
-    await writeStaticFile(fullPath, data);
+    await writeStaticFile(fullPath, data, options);
   }
 
   async get(reportId: string, relativePath: string): Promise<Uint8Array<ArrayBuffer> | null> {
@@ -115,10 +140,10 @@ export class FsStore implements StaticFileStore {
     fs.rmSync(this.resolveHistoryPath(reportId), { force: true });
   }
 
-  async putAsset(relativePath: string, data: StaticFileData): Promise<void> {
+  async putAsset(relativePath: string, data: StaticFileData, options?: StaticFileWriteOptions): Promise<void> {
     const fullPath = this.resolveAssetPath(relativePath);
 
-    await writeStaticFile(fullPath, data);
+    await writeStaticFile(fullPath, data, options);
   }
 
   async getAsset(relativePath: string): Promise<Uint8Array<ArrayBuffer> | null> {

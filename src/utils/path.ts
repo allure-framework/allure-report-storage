@@ -1,23 +1,21 @@
 export const normalizeUploadPath = (rawPath: string): string | null => {
-  const candidate = rawPath.trim();
-
-  if (!candidate || candidate === "/") {
+  if (
+    !rawPath ||
+    rawPath.includes("\0") ||
+    rawPath.includes("\\") ||
+    rawPath.startsWith("/") ||
+    /^[a-zA-Z]:/.test(rawPath)
+  ) {
     return null;
   }
 
-  const normalized = candidate.replaceAll("\\", "/").replace(/^\/+/, "");
-
-  if (!normalized) {
-    return null;
-  }
-
-  const segments = normalized.split("/");
+  const segments = rawPath.split("/");
 
   if (segments.some((segment) => !segment || segment === "." || segment === "..")) {
     return null;
   }
 
-  return segments.join("/");
+  return rawPath;
 };
 
 export const detectPluginRoots = (paths: string[]): string[] => {

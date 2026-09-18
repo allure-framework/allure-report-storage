@@ -10,10 +10,6 @@ export class D1AccessTokenRepository extends KyselyAccessTokenRepository {
   }
 
   static async create(options: D1ReportRepositoryOptions): Promise<D1AccessTokenRepository> {
-    const repository = new D1AccessTokenRepository(createD1Kysely(options.database));
-
-    await repository.ensureSchema();
-
-    return repository;
+    return new D1AccessTokenRepository(createD1Kysely(options.database));
   }
 }

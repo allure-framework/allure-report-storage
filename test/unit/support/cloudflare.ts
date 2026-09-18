@@ -1,6 +1,9 @@
+import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
 type R2PutValue = Parameters<R2Bucket["put"]>[1];
+
+const d1Schema = readFileSync(new URL("../../../migrations/0001_initial.sql", import.meta.url), "utf8");
 
 const toSqliteValue = (value: unknown) => {
   if (value instanceof ArrayBuffer) {
@@ -44,6 +47,11 @@ class MemoryD1PreparedStatement implements D1PreparedStatement {
 
 export class MemoryD1Database implements D1Database {
   private readonly database = new DatabaseSync(":memory:");
+  readonly preparedQueries: string[] = [];
+
+  constructor() {
+    this.database.exec(d1Schema);
+  }
 
   async batch<T = unknown>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]> {
     return Promise.all(statements.map((statement) => statement.all<T>()));
@@ -60,6 +68,8 @@ export class MemoryD1Database implements D1Database {
   }
 
   prepare(query: string): D1PreparedStatement {
+    this.preparedQueries.push(query);
+
     return new MemoryD1PreparedStatement(this.database, query);
   }
 

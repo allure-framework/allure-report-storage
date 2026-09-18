@@ -4,6 +4,7 @@ import { logger } from "hono/logger";
 import { getMimeType } from "hono/utils/mime";
 
 import type { AppEnv, BuildHttpAppOptions } from "./model.js";
+import { StorageOperationError } from "./storage/errors.js";
 import { createAccessTokenSecret, decodeAccessToken, encodeAccessToken, hashAccessToken } from "./utils/accessToken.js";
 import { listCompleteHistory, readHistoryDataPoint, resolveHistoryDataPoints } from "./utils/history.js";
 import {
@@ -33,6 +34,22 @@ type MultipartUploadItem = {
   file: Blob;
   path: string;
 };
+
+type UploadRequestError = {
+  error: string;
+  status: 400 | 411;
+};
+
+type RawUploadRequest =
+  | UploadRequestError
+  | {
+      data: Uint8Array | ReadableStream<Uint8Array>;
+      options: {
+        contentLength: number;
+        contentType?: string;
+      };
+      path: string;
+    };
 
 const runBestEffort = (promise: Promise<unknown>, executionContext?: ExecutionContext): void => {
   const handled = promise.catch((error: unknown) => {
@@ -99,6 +116,61 @@ const parseMultipartUploadBody = (
 
   return {
     items: paths.map((path, index) => ({ file: normalizedFiles[index], path })),
+  };
+};
+
+const parseContentLength = (request: Request): UploadRequestError | { contentLength: number } => {
+  const header = request.headers.get("content-length");
+
+  if (header === null) {
+    return { error: "content-length is required", status: 411 };
+  }
+
+  if (!/^(0|[1-9]\d*)$/.test(header)) {
+    return { error: "content-length must be a non-negative integer", status: 400 };
+  }
+
+  const contentLength = Number(header);
+
+  if (!Number.isSafeInteger(contentLength)) {
+    return { error: "content-length must be a safe integer", status: 400 };
+  }
+
+  return { contentLength };
+};
+
+const parseRawUploadRequest = (request: Request): RawUploadRequest => {
+  const pathParams = new URL(request.url).searchParams.getAll("path");
+
+  if (pathParams.length !== 1) {
+    return { error: "exactly one path is required", status: 400 };
+  }
+
+  const uploadPath = normalizeUploadPath(pathParams[0]);
+
+  if (!uploadPath) {
+    return { error: "invalid file path", status: 400 };
+  }
+
+  const parsedLength = parseContentLength(request);
+
+  if ("error" in parsedLength) {
+    return parsedLength;
+  }
+
+  const data = request.body ?? (parsedLength.contentLength === 0 ? new Uint8Array() : null);
+
+  if (!data) {
+    return { error: "request body is required", status: 400 };
+  }
+
+  return {
+    data,
+    options: {
+      contentLength: parsedLength.contentLength,
+      ...(request.headers.get("content-type") ? { contentType: request.headers.get("content-type")! } : {}),
+    },
+    path: uploadPath,
   };
 };
 
@@ -257,6 +329,32 @@ export const createHttpApp = <Bindings extends object = Record<string, never>>(
     return c.json({ report: mapReport(result.report) }, 200);
   });
 
+  app.put("/api/reports/:report_id/files", async (c) => {
+    const upload = parseRawUploadRequest(c.req.raw);
+
+    if ("error" in upload) {
+      return c.json({ error: upload.error }, upload.status);
+    }
+
+    const fileStore = c.get("fileStore");
+    const report = await c.get("repositories").reports.findById(c.req.param("report_id"));
+
+    if (!report) {
+      return c.json({ error: "report not found" }, 404);
+    }
+
+    if (report.status === "completed") {
+      return c.json({ error: "completed report is immutable" }, 409);
+    }
+
+    await fileStore.put(report.id, upload.path, upload.data, upload.options);
+
+    return c.json({ uploaded: true, path: upload.path }, 200);
+  });
+
+  /**
+   * @deprecated Use PUT /api/reports/:report_id/files with a raw request body.
+   */
   app.post("/api/reports/:report_id/upload", async (c) => {
     let body: FormData;
 
@@ -296,6 +394,21 @@ export const createHttpApp = <Bindings extends object = Record<string, never>>(
     );
   });
 
+  app.put("/api/assets", async (c) => {
+    const upload = parseRawUploadRequest(c.req.raw);
+
+    if ("error" in upload) {
+      return c.json({ error: upload.error }, upload.status);
+    }
+
+    await c.get("fileStore").putAsset(upload.path, upload.data, upload.options);
+
+    return c.json({ uploaded: true, path: upload.path }, 200);
+  });
+
+  /**
+   * @deprecated Use PUT /api/assets with a raw request body.
+   */
   app.post("/api/assets/upload", async (c) => {
     let body: FormData;
 
@@ -530,6 +643,16 @@ export const createHttpApp = <Bindings extends object = Record<string, never>>(
   app.onError((error, c) => {
     if (error instanceof HTTPException) {
       return error.getResponse();
+    }
+
+    if (error instanceof StorageOperationError) {
+      console.error(error.cause ?? error);
+
+      return c.json(
+        { error: error.publicMessage },
+        error.status,
+        error.retryAfter === undefined ? undefined : { "retry-after": String(error.retryAfter) },
+      );
     }
 
     console.error(error);

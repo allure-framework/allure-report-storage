@@ -159,10 +159,6 @@ export class D1ReportRepository extends KyselyReportRepository {
   }
 
   static async create(options: D1ReportRepositoryOptions): Promise<D1ReportRepository> {
-    const repository = new D1ReportRepository(createD1Kysely(options.database));
-
-    await repository.ensureSchema();
-
-    return repository;
+    return new D1ReportRepository(createD1Kysely(options.database));
   }
 }

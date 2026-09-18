@@ -132,6 +132,18 @@ const createBatchUploadFormData = (
   return formData;
 };
 
+const rawUpload = (content: Buffer | string): Pick<RequestInit, "body" | "headers"> => {
+  const body = Buffer.isBuffer(content) ? content : Buffer.from(content);
+
+  return {
+    body,
+    headers: {
+      "content-length": String(body.byteLength),
+      "content-type": "application/octet-stream",
+    },
+  };
+};
+
 const publishHistoryPoint = async (
   app: TestApp,
   reportId: string,
@@ -309,6 +321,12 @@ describe("reports API", () => {
       response = await app.request("/api/reports/protected-report", {
         method: "PUT",
         ...jsonBody({ repo: REPO, branch: "main", name: "Unauthorized" }),
+      });
+      expect(response.status).toBe(401);
+
+      response = await app.request("/api/assets?path=app.js", {
+        method: "PUT",
+        ...rawUpload("console.log('blocked');"),
       });
       expect(response.status).toBe(401);
 
@@ -519,6 +537,125 @@ describe("reports API", () => {
       expect(await readJson(response)).toEqual({ uploaded: true, paths: ["styles.css", "icons/logo.svg"] });
       expect(fs.existsSync(path.join(tempDir, "assets", "styles.css"))).toBe(true);
       expect(fs.existsSync(path.join(tempDir, "assets", "icons", "logo.svg"))).toBe(true);
+    });
+  });
+
+  it("streams raw report files and assets using canonical paths", async () => {
+    await withApp(async ({ app, tempDir }) => {
+      let response = await requestAuthorized(app, "/api/reports/raw-report", {
+        method: "PUT",
+        ...jsonBody({ repo: REPO, branch: "main", name: "Raw report" }),
+      });
+      expect(response.status).toBe(200);
+
+      const reportPath = "awesome/data/test-results/result.json";
+
+      response = await requestAuthorized(app, `/api/reports/raw-report/files?path=${encodeURIComponent(reportPath)}`, {
+        method: "PUT",
+        ...rawUpload('{"result":"first"}'),
+      });
+      expect(response.status).toBe(200);
+      expect(await readJson(response)).toEqual({ uploaded: true, path: reportPath });
+
+      response = await requestAuthorized(app, `/api/reports/raw-report/files?path=${encodeURIComponent(reportPath)}`, {
+        method: "PUT",
+        ...rawUpload('{"result":"replacement"}'),
+      });
+      expect(response.status).toBe(200);
+
+      const assetPath = "assets/app.js";
+
+      response = await requestAuthorized(app, `/api/assets?path=${encodeURIComponent(assetPath)}`, {
+        method: "PUT",
+        ...rawUpload("console.log('raw');"),
+      });
+      expect(response.status).toBe(200);
+      expect(await readJson(response)).toEqual({ uploaded: true, path: assetPath });
+
+      response = await requestAuthorized(app, "/api/assets?path=empty.txt", {
+        body: Buffer.alloc(0),
+        headers: {
+          "content-length": "0",
+          "content-type": "application/octet-stream",
+        },
+        method: "PUT",
+      });
+      expect(response.status).toBe(200);
+
+      response = await requestAuthorized(app, "/api/assets?path=literal%252Fname.txt", {
+        method: "PUT",
+        ...rawUpload("decoded once"),
+      });
+      expect(response.status).toBe(200);
+
+      expect(fs.readFileSync(path.join(tempDir, "files", "raw-report", reportPath), "utf8")).toBe(
+        '{"result":"replacement"}',
+      );
+      expect(fs.readFileSync(path.join(tempDir, "assets", assetPath), "utf8")).toBe("console.log('raw');");
+      expect(fs.statSync(path.join(tempDir, "assets", "empty.txt")).size).toBe(0);
+      expect(fs.readFileSync(path.join(tempDir, "assets", "literal%2Fname.txt"), "utf8")).toBe("decoded once");
+    });
+  });
+
+  it("validates raw upload paths, lengths, and report state before writing", async () => {
+    await withApp(async ({ app, tempDir }) => {
+      let response = await requestAuthorized(app, "/api/reports/raw-validation", {
+        method: "PUT",
+        ...jsonBody({ repo: REPO, branch: "main", name: "Raw validation" }),
+      });
+      expect(response.status).toBe(200);
+
+      for (const requestPath of [
+        "/api/reports/raw-validation/files",
+        "/api/reports/raw-validation/files?path=one&path=two",
+        `/api/reports/raw-validation/files?path=${encodeURIComponent("/absolute.txt")}`,
+        `/api/reports/raw-validation/files?path=${encodeURIComponent("C:\\windows.txt")}`,
+        `/api/reports/raw-validation/files?path=${encodeURIComponent("nested/../escape.txt")}`,
+      ]) {
+        response = await requestAuthorized(app, requestPath, {
+          method: "PUT",
+          ...rawUpload("blocked"),
+        });
+        expect(response.status).toBe(400);
+      }
+
+      response = await requestAuthorized(app, "/api/reports/raw-validation/files?path=file.txt", {
+        body: "missing length",
+        method: "PUT",
+      });
+      expect(response.status).toBe(411);
+
+      response = await requestAuthorized(app, "/api/reports/raw-validation/files?path=file.txt", {
+        body: "bad length",
+        headers: { "content-length": "-1" },
+        method: "PUT",
+      });
+      expect(response.status).toBe(400);
+
+      response = await requestAuthorized(app, "/api/reports/raw-validation/files?path=file.txt", {
+        headers: { "content-length": "1" },
+        method: "PUT",
+      });
+      expect(response.status).toBe(400);
+
+      response = await requestAuthorized(app, "/api/reports/missing/files?path=file.txt", {
+        method: "PUT",
+        ...rawUpload("missing"),
+      });
+      expect(response.status).toBe(404);
+
+      response = await requestAuthorized(app, "/api/reports/raw-validation/complete", {
+        method: "POST",
+        ...jsonBody({ historyPoint: { total: 1 } }),
+      });
+      expect(response.status).toBe(200);
+
+      response = await requestAuthorized(app, "/api/reports/raw-validation/files?path=file.txt", {
+        method: "PUT",
+        ...rawUpload("locked"),
+      });
+      expect(response.status).toBe(409);
+      expect(fs.existsSync(path.join(tempDir, "files", "raw-validation", "file.txt"))).toBe(false);
     });
   });
 

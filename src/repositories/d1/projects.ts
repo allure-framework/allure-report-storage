@@ -10,10 +10,6 @@ export class D1ProjectRepository extends KyselyProjectRepository {
   }
 
   static async create(options: D1ReportRepositoryOptions): Promise<D1ProjectRepository> {
-    const repository = new D1ProjectRepository(createD1Kysely(options.database));
-
-    await repository.ensureSchema();
-
-    return repository;
+    return new D1ProjectRepository(createD1Kysely(options.database));
   }
 }

@@ -30,21 +30,40 @@ The Worker uses D1 + R2 by default. [S3-compatible storage](#s3-compatible_stora
    ```
 
 2. Update `database_id` in `wrangler.toml`.
-3. Set `ACCESS_TOKEN` and `SECRET` as vars or Worker secrets.
-4. Keep or adjust the scheduled cron in `wrangler.toml`; it runs report retention cleanup for Workers.
-5. Deploy the Worker:
+3. Apply the D1 migrations:
+
+   ```bash
+   corepack enable
+   yarn dlx wrangler d1 migrations apply allure-report-storage --remote
+   ```
+
+4. Set `ACCESS_TOKEN` and `SECRET` as vars or Worker secrets.
+5. Keep or adjust the scheduled cron in `wrangler.toml`; it runs report retention cleanup for Workers.
+6. Deploy the Worker:
 
    ```bash
    corepack enable
    yarn dlx wrangler deploy
    ```
 
-6. Start locally if needed:
+7. Apply migrations and start locally if needed:
 
    ```bash
    corepack enable
+   yarn dlx wrangler d1 migrations apply allure-report-storage --local
    yarn dlx wrangler dev
    ```
+
+## Cloudflare security rules
+
+Do not apply browser-oriented Managed Challenge, JavaScript Challenge, Browser Integrity Check, Security Level, or bot
+challenges to `/api/*`. Allure publishes reports from non-browser CI clients, which cannot solve those challenges.
+Keep bearer-token authentication enabled, and use non-challenge rate limits that return `429` with `Retry-After` when
+additional throttling is required.
+
+Regular Bot Fight Mode cannot be bypassed by a WAF skip rule. If it challenges API traffic, disable it for the zone,
+move the API to a separate hostname with API-appropriate security, or use a bot-management mode that supports
+per-route exceptions.
 
 ## S3-Compatible Storage
 

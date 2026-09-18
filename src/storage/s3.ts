@@ -12,7 +12,7 @@ import {
   type PutObjectCommandInput,
 } from "@aws-sdk/client-s3";
 
-import type { StaticFileData, StaticFileStore } from "../model.js";
+import type { StaticFileData, StaticFileStore, StaticFileWriteOptions } from "../model.js";
 import { historyFileName } from "../utils/path.js";
 
 export interface S3StoreOptions {
@@ -41,7 +41,7 @@ const isNodeReadableStream = (data: StaticFileData): data is NodeJS.ReadableStre
   "pipe" in data &&
   typeof (data as { pipe?: unknown }).pipe === "function";
 
-const toS3Payload = (data: StaticFileData): S3Payload => {
+const toS3Payload = (data: StaticFileData, options?: StaticFileWriteOptions): S3Payload => {
   if (data instanceof Uint8Array) {
     return { body: data, contentLength: data.byteLength };
   }
@@ -54,11 +54,14 @@ const toS3Payload = (data: StaticFileData): S3Payload => {
   }
 
   if (isWebReadableStream(data)) {
-    return { body: Readable.fromWeb(data as unknown as NodeReadableStream<Uint8Array>) };
+    return {
+      body: Readable.fromWeb(data as unknown as NodeReadableStream<Uint8Array>),
+      contentLength: options?.contentLength,
+    };
   }
 
   if (isNodeReadableStream(data)) {
-    return { body: data as Readable };
+    return { body: data as Readable, contentLength: options?.contentLength };
   }
 
   return { body: data };
@@ -121,8 +124,13 @@ export class S3Store implements StaticFileStore {
     this.historyPrefix = options.historyPrefix ?? "history";
   }
 
-  async put(reportId: string, relativePath: string, data: StaticFileData): Promise<void> {
-    await this.putObject(this.reportObjectKey(reportId, relativePath), data);
+  async put(
+    reportId: string,
+    relativePath: string,
+    data: StaticFileData,
+    options?: StaticFileWriteOptions,
+  ): Promise<void> {
+    await this.putObject(this.reportObjectKey(reportId, relativePath), data, options);
   }
 
   async get(reportId: string, relativePath: string): Promise<Uint8Array<ArrayBuffer> | null> {
@@ -179,22 +187,23 @@ export class S3Store implements StaticFileStore {
     );
   }
 
-  async putAsset(relativePath: string, data: StaticFileData): Promise<void> {
-    await this.putObject(this.assetObjectKey(relativePath), data);
+  async putAsset(relativePath: string, data: StaticFileData, options?: StaticFileWriteOptions): Promise<void> {
+    await this.putObject(this.assetObjectKey(relativePath), data, options);
   }
 
   async getAsset(relativePath: string): Promise<Uint8Array<ArrayBuffer> | null> {
     return this.getObject(this.assetObjectKey(relativePath));
   }
 
-  private async putObject(key: string, data: StaticFileData): Promise<void> {
-    const payload = toS3Payload(data);
+  private async putObject(key: string, data: StaticFileData, options?: StaticFileWriteOptions): Promise<void> {
+    const payload = toS3Payload(data, options);
 
     await this.client.send(
       new PutObjectCommand({
         Body: payload.body,
         Bucket: this.options.bucket,
         ContentLength: payload.contentLength,
+        ContentType: options?.contentType,
         Key: key,
       }),
     );
