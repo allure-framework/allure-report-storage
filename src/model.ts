@@ -67,6 +67,7 @@ export interface AppVariables {
   accessToken: string;
   fileStore: StaticFileStore;
   mainBranch: string;
+  publicUrl: string | undefined;
   repositories: Repositories;
   retentionPolicy: RetentionPolicy;
   secret: string;
@@ -83,6 +84,7 @@ export interface AppContextOptions {
   accessToken: string;
   fileStore: StaticFileStore;
   mainBranch?: string;
+  publicUrl?: string;
   repositories: Repositories;
   retentionPolicy?: RetentionPolicy;
   secret: string;
@@ -121,6 +123,7 @@ type WorkerVariableName =
 export type WorkerBindings = Omit<WorkerEnv, WorkerVariableName> & {
   ACCESS_TOKEN?: string;
   MAIN_BRANCH?: string;
+  PUBLIC_URL?: string;
   R2_ASSETS_PREFIX?: string;
   R2_PREFIX?: string;
   R2_REPORTS_PREFIX?: string;

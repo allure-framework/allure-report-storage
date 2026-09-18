@@ -10,6 +10,7 @@ import { SqliteAccessTokenRepository } from "../../../src/repositories/sqlite/ac
 import { SqliteProjectRepository } from "../../../src/repositories/sqlite/projects.js";
 import { SqliteReportRepository } from "../../../src/repositories/sqlite/reports.js";
 import { FsStore } from "../../../src/storage/fs.js";
+import { decodeAccessToken } from "../../../src/utils/accessToken.js";
 import { historyFileName } from "../../../src/utils/path.js";
 import { formatReportCreatedAt } from "../../../src/utils/reports.js";
 
@@ -196,6 +197,62 @@ const expectHistoryPoints = async (app: TestApp, expected: string[], branch = "m
 };
 
 describe("reports API", () => {
+  it.each(["http://localhost:3000", "https://reports.example.com:8443"])(
+    "embeds the request origin %s in tokens when PUBLIC_URL is unset",
+    async (origin) => {
+      await withApp(async ({ app }) => {
+        const response = await requestBootstrap(app, `${origin}/api/token`, {
+          headers: {
+            "x-forwarded-host": "ignored.example.com",
+            "x-forwarded-proto": "https",
+          },
+          method: "POST",
+        });
+
+        expect(response.status).toBe(200);
+
+        const { access_token: token } = await readJson<{ access_token: string }>(response);
+
+        expect(await decodeAccessToken(token, SECRET)).toEqual({
+          accessToken: expect.any(String),
+          url: origin,
+        });
+      });
+    },
+  );
+
+  it("issues usable tokens with PUBLIC_URL when the backend request uses HTTP", async () => {
+    const publicUrl = "https://reports.example.com:8443";
+
+    await withApp(
+      async ({ app }) => {
+        const response = await requestBootstrap(app, "http://internal-storage:3000/api/token", {
+          headers: {
+            "x-forwarded-host": "ignored.example.com",
+            "x-forwarded-proto": "http",
+          },
+          method: "POST",
+        });
+
+        expect(response.status).toBe(200);
+
+        const { access_token: token } = await readJson<{ access_token: string }>(response);
+        const payload = await decodeAccessToken(token, SECRET);
+
+        expect(payload).toEqual({ accessToken: expect.any(String), url: publicUrl });
+
+        const createResponse = await app.request(new URL("/api/reports", payload!.url).href, {
+          ...jsonBody({ repo: REPO, branch: "main" }),
+          headers: { "authorization": `Bearer ${token}`, "content-type": "application/json" },
+          method: "POST",
+        });
+
+        expect(createResponse.status).toBe(200);
+      },
+      { publicUrl },
+    );
+  });
+
   it("applies count retention per branch and keeps newest completed report", async () => {
     await withApp(
       async ({ app, tempDir }) => {

@@ -10,6 +10,7 @@ import { SqliteProjectRepository } from "./repositories/sqlite/projects.js";
 import { SqliteReportRepository } from "./repositories/sqlite/reports.js";
 import { FsStore } from "./storage/fs.js";
 import { S3Store } from "./storage/s3.js";
+import { normalizePublicUrl } from "./utils/http.js";
 import { cleanupReportRetention, parseRetentionPolicy } from "./utils/retention.js";
 
 const port = Number(process.env.PORT ?? "3000");
@@ -18,6 +19,7 @@ const dataDir = process.env.DATA_DIR ?? path.resolve(process.cwd(), "./data");
 const accessToken = process.env.ACCESS_TOKEN;
 const databasePath = process.env.DATABASE_PATH?.trim() || path.join(dataDir, "reports.sqlite");
 const mainBranch = process.env.MAIN_BRANCH?.trim() || "main";
+const publicUrl = normalizePublicUrl(process.env.PUBLIC_URL);
 const secret = process.env.SECRET;
 const storageBackend = (process.env.STORAGE_BACKEND ?? process.env.STORAGE_TYPE ?? "fs").trim().toLowerCase();
 const retentionPolicy = parseRetentionPolicy((name) => process.env[name]);
@@ -181,7 +183,7 @@ const main = async (): Promise<void> => {
     reports: await SqliteReportRepository.create({ databasePath }),
   };
   const fileStore = createFileStore();
-  const app = await buildApp({ repositories, fileStore, accessToken, mainBranch, retentionPolicy, secret });
+  const app = await buildApp({ repositories, fileStore, accessToken, mainBranch, publicUrl, retentionPolicy, secret });
 
   startRetentionSweep({ fileStore, repositories });
 

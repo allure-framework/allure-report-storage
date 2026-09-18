@@ -189,6 +189,7 @@ export const createHttpApp = <Bindings extends object = Record<string, never>>(
     c.set("accessToken", requireEnvValue(appContext.accessToken, "ACCESS_TOKEN"));
     c.set("fileStore", appContext.fileStore);
     c.set("mainBranch", normalizeMainBranch(appContext.mainBranch));
+    c.set("publicUrl", appContext.publicUrl);
     c.set("repositories", appContext.repositories);
     c.set("retentionPolicy", appContext.retentionPolicy ?? {});
     c.set("secret", requireEnvValue(appContext.secret, "SECRET"));
@@ -230,7 +231,7 @@ export const createHttpApp = <Bindings extends object = Record<string, never>>(
       return unauthorizedResponse(c);
     }
 
-    const url = new URL(c.req.url).origin;
+    const url = c.get("publicUrl") ?? new URL(c.req.url).origin;
 
     const payload = {
       accessToken: createAccessTokenSecret(),

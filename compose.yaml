@@ -8,6 +8,7 @@ services:
       HOST: 0.0.0.0
       MAIN_BRANCH: ${MAIN_BRANCH:-main}
       PORT: 3000
+      PUBLIC_URL: ${PUBLIC_URL:-}
       # Optional report retention. Uncomment and set positive values to enable.
       # REPORT_RETENTION_MAX_REPORTS_PER_BRANCH: 20
       # REPORT_RETENTION_MAX_REPORT_AGE_DAYS: 1

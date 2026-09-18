@@ -14,6 +14,25 @@ export const normalizeMainBranch = (branch: string | undefined): string => {
   return normalized ? normalized : "main";
 };
 
+export const normalizePublicUrl = (value: string | undefined): string | undefined => {
+  const normalized = value?.trim();
+
+  if (!normalized) {
+    return undefined;
+  }
+
+  try {
+    // Check the raw origin shape before URL parsing can normalize away paths or credentials.
+    if (/^https?:\/\/[^/?#@\\\s]+\/?$/i.test(normalized)) {
+      return new URL(normalized).origin;
+    }
+  } catch {
+    // Report malformed URLs and unsupported URL components consistently.
+  }
+
+  throw new Error("PUBLIC_URL must be an absolute HTTP(S) origin without credentials, a path, a query, or a fragment");
+};
+
 export const normalizeStringParam = (value: unknown): string | null => {
   const normalized = typeof value === "string" ? value.trim() : "";
 

@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { WorkerBindings } from "../../src/model.js";
+import { decodeAccessToken } from "../../src/utils/accessToken.js";
 import worker from "../../src/worker.js";
 import { MemoryD1Database, MemoryR2Bucket } from "./support/cloudflare.js";
 
@@ -38,15 +39,20 @@ const jsonBody = (payload: unknown): Pick<RequestInit, "body" | "headers"> => ({
   headers: { "content-type": "application/json" },
 });
 
-const createAccessToken = async (env: WorkerBindings): Promise<string> => {
+const createAccessToken = async (
+  env: WorkerBindings,
+  origin = "https://allure-report-storage.example",
+): Promise<string> => {
   const response = (await worker.fetch(
-    new Request(new URL("/api/token", "https://allure-report-storage.example"), {
+    new Request(new URL("/api/token", origin), {
       headers: { authorization: `Bearer ${ACCESS_TOKEN}` },
       method: "POST",
     }),
     env,
     executionContext as ExecutionContext,
   )) as Response;
+
+  expect(response.status).toBe(200);
 
   return ((await response.json()) as { access_token: string }).access_token;
 };
@@ -75,6 +81,45 @@ const request = (
 };
 
 describe("Cloudflare Worker entrypoint", () => {
+  it.each([
+    [undefined, "http://internal-storage:3000"],
+    ["", "http://internal-storage:3000"],
+    [" \t ", "http://internal-storage:3000"],
+    ["https://reports.example.com", "https://reports.example.com"],
+    [" https://Reports.Example.com:8443/ ", "https://reports.example.com:8443"],
+  ])("uses the PUBLIC_URL binding %j for token generation", async (publicUrl, expectedUrl) => {
+    const env = { ...createEnv(), PUBLIC_URL: publicUrl };
+    const accessToken = await createAccessToken(env, "http://internal-storage:3000");
+
+    expect(await decodeAccessToken(accessToken, SECRET)).toEqual({
+      accessToken: expect.any(String),
+      url: expectedUrl,
+    });
+
+    const response = await request(env, "/api/reports", accessToken, {
+      ...jsonBody({ branch: "main", repo: "qameta/allure-report-storage" }),
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  it("rejects an invalid PUBLIC_URL binding instead of issuing a token", async () => {
+    const env = { ...createEnv(), PUBLIC_URL: "https://reports.example.com/allure" };
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const response = await request(env, "/api/token", ACCESS_TOKEN, { method: "POST" });
+
+      expect(response.status).toBe(500);
+      expect(errorLog).toHaveBeenCalledWith(
+        expect.objectContaining({ message: expect.stringContaining("PUBLIC_URL must be") }),
+      );
+    } finally {
+      errorLog.mockRestore();
+    }
+  });
+
   it("uses D1 and R2 bindings for the report lifecycle", async () => {
     const env = createEnv();
     const accessToken = await createAccessToken(env);
