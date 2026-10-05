@@ -1,7 +1,11 @@
 import type { Report, StaticFileStore } from "../model.js";
 import type { ListHistoryQuery, ReportRepository } from "../repositories/api.js";
 
-const textDecoder = new TextDecoder();
+const textDecoder = new TextDecoder("utf-8", { fatal: true });
+const textEncoder = new TextEncoder();
+const historyPrefix = textEncoder.encode('{"history":[');
+const historySeparator = textEncoder.encode(",");
+const historySuffix = textEncoder.encode("]}");
 
 const deleteReportAndFiles = async (
   fileStore: StaticFileStore,
@@ -12,10 +16,10 @@ const deleteReportAndFiles = async (
   await reportsRepository.delete(report.id);
 };
 
-export const readHistoryDataPoint = async (
+export const readSerializedHistoryDataPoint = async (
   fileStore: StaticFileStore,
   report: Report,
-): Promise<unknown | undefined> => {
+): Promise<Uint8Array<ArrayBuffer> | undefined> => {
   const dataPoint = await fileStore.getHistory(report.id);
 
   if (!dataPoint) {
@@ -23,7 +27,9 @@ export const readHistoryDataPoint = async (
   }
 
   try {
-    return JSON.parse(textDecoder.decode(dataPoint));
+    JSON.parse(textDecoder.decode(dataPoint));
+
+    return dataPoint;
   } catch {
     return undefined;
   }
@@ -44,17 +50,17 @@ export const listCompleteHistory = async (
   return reports;
 };
 
-export const resolveHistoryDataPoints = async (
+export const resolveSerializedHistoryDataPoints = async (
   fileStore: StaticFileStore,
   reportsRepository: ReportRepository,
   reports: Report[],
   branch: string,
-): Promise<unknown[]> => {
-  const history: unknown[] = [];
+): Promise<Uint8Array<ArrayBuffer>[]> => {
+  const history: Uint8Array<ArrayBuffer>[] = [];
 
   for (let index = 0; index < reports.length; index += 1) {
     const report = reports[index]!;
-    const dataPoint = await readHistoryDataPoint(fileStore, report);
+    const dataPoint = await readSerializedHistoryDataPoint(fileStore, report);
 
     if (!dataPoint) {
       const reportsToDelete = (history.length === 0 ? [report] : reports.slice(index)).filter(
@@ -74,4 +80,28 @@ export const resolveHistoryDataPoints = async (
   }
 
   return history;
+};
+
+export const createHistoryResponse = (history: readonly Uint8Array<ArrayBuffer>[]): Response => {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(historyPrefix);
+
+      history.forEach((dataPoint, index) => {
+        if (index > 0) {
+          controller.enqueue(historySeparator);
+        }
+
+        controller.enqueue(dataPoint);
+      });
+
+      controller.enqueue(historySuffix);
+      controller.close();
+    },
+  });
+
+  return new Response(body, {
+    headers: { "content-type": "application/json; charset=UTF-8" },
+    status: 200,
+  });
 };

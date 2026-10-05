@@ -1,5 +1,6 @@
 import type { Report, RetentionPolicy, StaticFileStore } from "../model.js";
 import type { ReportRepository, Repositories } from "../repositories/api.js";
+import { createErrorLog } from "./error.js";
 
 const isRetentionEnabled = (policy: RetentionPolicy): boolean =>
   policy.maxReportsPerBranch !== undefined || policy.maxReportAgeMs !== undefined;
@@ -42,7 +43,7 @@ const cleanupCandidates = async (
     } catch (cause) {
       const error = cause instanceof Error ? cause : new Error(String(cause));
 
-      console.error(`report retention cleanup failed for report "${report.id}"`, error);
+      console.error(createErrorLog(`report retention cleanup failed for report "${report.id}"`, error));
       failures.push(error);
     }
   }

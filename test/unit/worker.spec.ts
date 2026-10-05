@@ -161,6 +161,28 @@ describe("Cloudflare Worker entrypoint", () => {
     );
   });
 
+  it("returns scalar history points without treating them as missing", async () => {
+    const env = createEnv();
+    const accessToken = await createAccessToken(env);
+
+    let response = await request(env, "/api/reports/scalar-history", accessToken, {
+      method: "PUT",
+      ...jsonBody({ branch: "main", repo: "qameta/allure-report-storage" }),
+    });
+    expect(response.status).toBe(200);
+
+    response = await request(env, "/api/reports/scalar-history/complete", accessToken, {
+      method: "POST",
+      ...jsonBody({ historyPoint: false }),
+    });
+    expect(response.status).toBe(200);
+
+    response = await request(env, "/api/history?repo=qameta%2Fallure-report-storage", accessToken);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ history: [false] });
+  });
+
   it("maps transient R2 throttling to a retryable response", async () => {
     const env = createEnv();
     const accessToken = await createAccessToken(env);

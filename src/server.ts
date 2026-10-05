@@ -10,6 +10,7 @@ import { SqliteProjectRepository } from "./repositories/sqlite/projects.js";
 import { SqliteReportRepository } from "./repositories/sqlite/reports.js";
 import { FsStore } from "./storage/fs.js";
 import { S3Store } from "./storage/s3.js";
+import { createErrorLog } from "./utils/error.js";
 import { normalizePublicUrl } from "./utils/http.js";
 import { cleanupReportRetention, parseRetentionPolicy } from "./utils/retention.js";
 
@@ -157,7 +158,7 @@ const startRetentionSweep = (input: {
     try {
       await cleanupReportRetention({ ...input, policy: retentionPolicy });
     } catch (error: unknown) {
-      console.error("report retention sweep failed", error);
+      console.error(createErrorLog("report retention sweep failed", error));
     }
   };
 
