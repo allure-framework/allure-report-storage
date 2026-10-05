@@ -6,7 +6,13 @@ import { getMimeType } from "hono/utils/mime";
 import type { AppEnv, BuildHttpAppOptions } from "./model.js";
 import { StorageOperationError } from "./storage/errors.js";
 import { createAccessTokenSecret, decodeAccessToken, encodeAccessToken, hashAccessToken } from "./utils/accessToken.js";
-import { listCompleteHistory, readHistoryDataPoint, resolveHistoryDataPoints } from "./utils/history.js";
+import { createErrorLog } from "./utils/error.js";
+import {
+  createHistoryResponse,
+  listCompleteHistory,
+  readSerializedHistoryDataPoint,
+  resolveSerializedHistoryDataPoints,
+} from "./utils/history.js";
 import {
   isApiPath,
   isDynamicOptions,
@@ -53,7 +59,7 @@ type RawUploadRequest =
 
 const runBestEffort = (promise: Promise<unknown>, executionContext?: ExecutionContext): void => {
   const handled = promise.catch((error: unknown) => {
-    console.error("report retention cleanup failed", error);
+    console.error(createErrorLog("report retention cleanup failed", error));
   });
 
   if (executionContext) {
@@ -531,15 +537,15 @@ export const createHttpApp = <Bindings extends object = Record<string, never>>(
     let reports = await reportsRepository.listHistory({ repo, branch, fallbackBranch: projectMainBranch, limit });
 
     if (!limit) {
-      const history = await resolveHistoryDataPoints(fileStore, reportsRepository, reports, branch);
+      const history = await resolveSerializedHistoryDataPoints(fileStore, reportsRepository, reports, branch);
 
-      return c.json({ history }, 200);
+      return createHistoryResponse(history);
     }
 
-    const history: unknown[] = [];
+    const history: Uint8Array<ArrayBuffer>[] = [];
 
     for (const report of reports) {
-      const dataPoint = await readHistoryDataPoint(fileStore, report);
+      const dataPoint = await readSerializedHistoryDataPoint(fileStore, report);
 
       if (!dataPoint) {
         reports = await listCompleteHistory(reportsRepository, {
@@ -549,15 +555,15 @@ export const createHttpApp = <Bindings extends object = Record<string, never>>(
           limit,
         });
 
-        const resolvedHistory = await resolveHistoryDataPoints(fileStore, reportsRepository, reports, branch);
+        const resolvedHistory = await resolveSerializedHistoryDataPoints(fileStore, reportsRepository, reports, branch);
 
-        return c.json({ history: resolvedHistory.slice(0, limit) }, 200);
+        return createHistoryResponse(resolvedHistory.slice(0, limit));
       }
 
       history.push(dataPoint);
     }
 
-    return c.json({ history }, 200);
+    return createHistoryResponse(history);
   });
 
   app.get("/reports/tree", async (c) => {
@@ -647,7 +653,7 @@ export const createHttpApp = <Bindings extends object = Record<string, never>>(
     }
 
     if (error instanceof StorageOperationError) {
-      console.error(error.cause ?? error);
+      console.error(createErrorLog("storage operation failed", error));
 
       return c.json(
         { error: error.publicMessage },
@@ -656,7 +662,7 @@ export const createHttpApp = <Bindings extends object = Record<string, never>>(
       );
     }
 
-    console.error(error);
+    console.error(createErrorLog("request failed", error));
     return c.json({ error: "internal server error" }, 500);
   });
 

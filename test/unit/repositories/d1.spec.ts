@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { D1AccessTokenRepository } from "../../../src/repositories/d1/accessTokens.js";
 import { D1ProjectRepository } from "../../../src/repositories/d1/projects.js";
 import { D1ReportRepository } from "../../../src/repositories/d1/reports.js";
 import { MemoryD1Database } from "../support/cloudflare.js";
@@ -7,6 +8,70 @@ import { MemoryD1Database } from "../support/cloudflare.js";
 const pauseForOrdering = async (): Promise<void> => {
   await new Promise((resolve) => setTimeout(resolve, 2));
 };
+
+describe("D1AccessTokenRepository", () => {
+  it("reuses recently verified access tokens without another D1 query", async () => {
+    const database = new MemoryD1Database();
+    const writer = await D1AccessTokenRepository.create({ database });
+
+    try {
+      const created = await writer.create({
+        accessTokenHash: "cached-token-hash",
+        id: "cached-token",
+      });
+      const reader = await D1AccessTokenRepository.create({ database });
+
+      await expect(reader.findByAccessTokenHash(created.accessTokenHash)).resolves.toEqual(created);
+      await expect(reader.findByAccessTokenHash(created.accessTokenHash)).resolves.toEqual(created);
+      expect(database.preparedQueries.filter((query) => /\bfrom\s+["`]?access_tokens\b/i.test(query))).toEqual([]);
+    } finally {
+      database.close();
+    }
+  });
+
+  it("keeps access token caches isolated by D1 binding", async () => {
+    const firstDatabase = new MemoryD1Database();
+    const secondDatabase = new MemoryD1Database();
+    const writer = await D1AccessTokenRepository.create({ database: firstDatabase });
+    const reader = await D1AccessTokenRepository.create({ database: secondDatabase });
+
+    try {
+      await writer.create({
+        accessTokenHash: "database-specific-token-hash",
+        id: "database-specific-token",
+      });
+
+      await expect(reader.findByAccessTokenHash("database-specific-token-hash")).resolves.toBeNull();
+    } finally {
+      firstDatabase.close();
+      secondDatabase.close();
+    }
+  });
+
+  it("coalesces concurrent D1 lookups for the same access token", async () => {
+    const database = new MemoryD1Database();
+
+    try {
+      await database.exec(`
+        insert into access_tokens (id, access_token_hash, created_at)
+        values ('existing-token', 'existing-token-hash', '2026-01-01T00:00:00.000Z')
+      `);
+
+      const firstRepository = await D1AccessTokenRepository.create({ database });
+      const secondRepository = await D1AccessTokenRepository.create({ database });
+      const [first, second] = await Promise.all([
+        firstRepository.findByAccessTokenHash("existing-token-hash"),
+        secondRepository.findByAccessTokenHash("existing-token-hash"),
+      ]);
+
+      expect(first).toEqual(second);
+      expect(first).toMatchObject({ id: "existing-token" });
+      expect(database.preparedQueries.filter((query) => /\bfrom\s+["`]?access_tokens\b/i.test(query))).toHaveLength(1);
+    } finally {
+      database.close();
+    }
+  });
+});
 
 describe("D1ReportRepository", () => {
   it("stores report lifecycle data and preserves completed report immutability", async () => {
