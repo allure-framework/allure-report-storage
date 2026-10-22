@@ -1,4 +1,4 @@
-import { Readable } from "node:stream";
+import { PassThrough, Readable } from "node:stream";
 
 import {
   DeleteObjectsCommand,
@@ -208,5 +208,30 @@ describe("S3Store", () => {
     await store.delete("r1");
 
     expect(Array.from(objects.keys()).sort()).toEqual(["root/assets/app.js", "root/files/r2/index.html"]);
+  });
+
+  it("rejects a streamed upload when the request body fails mid-stream", async () => {
+    // Mirrors @smithy/node-http-handler: the body is piped without an error listener,
+    // so the request only settles when the body ends or the abort signal fires.
+    const send = vi.fn(
+      (command: PutObjectCommand, options?: { abortSignal?: AbortSignal }) =>
+        new Promise((resolve, reject) => {
+          const sink = (command.input.Body as Readable).pipe(new PassThrough());
+
+          sink.resume();
+          sink.on("end", () => resolve({}));
+          options?.abortSignal?.addEventListener("abort", () => reject(new Error("Request aborted")));
+        }),
+    );
+    const store = new S3Store({ bucket: "bucket", client: { send } as unknown as Pick<S3Client, "send"> });
+    const failure = Object.assign(new Error("aborted"), { code: "ECONNRESET" });
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1, 2, 3]));
+        setTimeout(() => controller.error(failure), 10);
+      },
+    });
+
+    await expect(store.putAsset("app.js", body, { contentLength: 10 })).rejects.toBe(failure);
   });
 });

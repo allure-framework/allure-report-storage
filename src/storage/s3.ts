@@ -197,16 +197,34 @@ export class S3Store implements StaticFileStore {
 
   private async putObject(key: string, data: StaticFileData, options?: StaticFileWriteOptions): Promise<void> {
     const payload = toS3Payload(data, options);
+    const command = new PutObjectCommand({
+      Body: payload.body,
+      Bucket: this.options.bucket,
+      ContentLength: payload.contentLength,
+      ContentType: options?.contentType,
+      Key: key,
+    });
 
-    await this.client.send(
-      new PutObjectCommand({
-        Body: payload.body,
-        Bucket: this.options.bucket,
-        ContentLength: payload.contentLength,
-        ContentType: options?.contentType,
-        Key: key,
-      }),
-    );
+    if (!(payload.body instanceof Readable)) {
+      await this.client.send(command);
+      return;
+    }
+
+    // The SDK pipes stream bodies without listening for their errors: a failed body stream
+    // (e.g. the uploading client disconnects) would crash the process and leave the S3 request hanging.
+    const abortController = new AbortController();
+    let bodyError: unknown;
+
+    payload.body.on("error", (error) => {
+      bodyError = error;
+      abortController.abort(error);
+    });
+
+    try {
+      await this.client.send(command, { abortSignal: abortController.signal });
+    } catch (error) {
+      throw bodyError ?? error;
+    }
   }
 
   private async getObject(key: string): Promise<Uint8Array<ArrayBuffer> | null> {
