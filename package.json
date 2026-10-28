@@ -36,7 +36,7 @@
     "oxlint": "1.89.0",
     "rimraf": "^6.0.1",
     "typescript": "^5.6.3",
-    "vitest": "^4.1.11",
+    "vitest": "^5.0.5",
     "wrangler": "^4.124.0"
   },
   "resolutions": {
