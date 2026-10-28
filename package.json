@@ -43,7 +43,7 @@
     "adm-zip": "0.6.1",
     "axios": "1.20.0",
     "brace-expansion": "5.0.12",
-    "dompurify": "3.4.13",
+    "dompurify": "3.4.17",
     "fast-xml-builder": "1.2.0",
     "fast-xml-parser": "5.10.1",
     "http-cache-semantics": "4.3.0",
