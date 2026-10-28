@@ -46,16 +46,18 @@
     "dompurify": "3.4.17",
     "fast-xml-builder": "1.2.0",
     "fast-xml-parser": "5.10.1",
+    "follow-redirects": "1.16.1",
     "http-cache-semantics": "4.3.0",
     "ip-address": "10.7.1",
     "linkify-it": "5.0.2",
-    "markdown-it": "14.3.1",
+    "markdown-it": "14.3.3",
     "nanoid@npm:^3.3.16": "3.3.18",
     "postcss": "8.5.25",
-    "sharp": "0.35.4",
+    "sharp": "0.35.5",
+    "source-map-js": "1.2.2",
     "tar": "7.5.21",
-    "undici": "7.29.1",
-    "vite": "8.0.16"
+    "undici": "7.30.1",
+    "vite": "8.1.6"
   },
   "packageManager": "yarn@4.5.1"
 }
