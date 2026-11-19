@@ -46,7 +46,7 @@
     "dompurify": "3.4.17",
     "fast-xml-builder": "1.2.0",
     "fast-xml-parser": "5.10.1",
-    "follow-redirects": "1.16.1",
+    "follow-redirects": "1.16.2",
     "http-cache-semantics": "4.3.0",
     "ip-address": "10.7.1",
     "linkify-it": "5.0.2",
