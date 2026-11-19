@@ -4,6 +4,7 @@ import { logger } from "hono/logger";
 import { getMimeType } from "hono/utils/mime";
 
 import type { AppEnv, BuildHttpAppOptions } from "./model.js";
+import type { LatestCompletedReport } from "./repositories/api.js";
 import { StorageOperationError } from "./storage/errors.js";
 import { createAccessTokenSecret, decodeAccessToken, encodeAccessToken, hashAccessToken } from "./utils/accessToken.js";
 import { createErrorLog } from "./utils/error.js";
@@ -44,6 +45,28 @@ type MultipartUploadItem = {
 type UploadRequestError = {
   error: string;
   status: 400 | 411;
+};
+
+const createRepositoriesResponse = (reports: LatestCompletedReport[]) => {
+  const repositories = new Map<string, Map<string, string>>();
+
+  for (const report of reports) {
+    const branches = repositories.get(report.repo) ?? new Map<string, string>();
+
+    branches.set(report.branch, report.reportId);
+    repositories.set(report.repo, branches);
+  }
+
+  return {
+    repositories: Object.fromEntries(
+      [...repositories].map(([repo, branches]) => [
+        repo,
+        {
+          branches: Object.fromEntries([...branches].map(([branch, lastReportId]) => [branch, { lastReportId }])),
+        },
+      ]),
+    ),
+  };
 };
 
 type RawUploadRequest =
@@ -228,6 +251,12 @@ export const createHttpApp = <Bindings extends object = Record<string, never>>(
 
   app.get("/api/ping", (c) => {
     return c.json({ pong: true, timestamp: Date.now() }, 200);
+  });
+
+  app.get("/api/repositories", async (c) => {
+    const reports = await c.get("repositories").reports.listLatestCompleted();
+
+    return c.json(createRepositoriesResponse(reports), 200);
   });
 
   app.post("/api/token", async (c) => {

@@ -169,7 +169,7 @@ describe("reports API e2e", () => {
     expect((await readJson(response)).error).toBe("completed report is immutable");
   });
 
-  it("does not expose completed report discovery endpoints", async () => {
+  it("exposes the repository index without exposing report-list aliases", async () => {
     const publish = async (reportId: string, branch: string, total: number): Promise<void> => {
       let response = await harness.request(`/api/reports/${reportId}`, {
         body: JSON.stringify({ repo: REPO, branch, name: reportId }),
@@ -196,7 +196,20 @@ describe("reports API e2e", () => {
     await publish("branch-report-002", "main", 2);
     await publish("branch-report-003", "main", 3);
 
-    let response = await harness.request("/api/reports");
+    let response = await harness.request("/api/repositories", { token: null });
+    expect(response.status).toBe(200);
+    expect(await readJson(response)).toEqual({
+      repositories: {
+        [REPO]: {
+          branches: {
+            main: { lastReportId: "branch-report-003" },
+            release: { lastReportId: "branch-report-001" },
+          },
+        },
+      },
+    });
+
+    response = await harness.request("/api/reports");
     expect(response.status).toBe(404);
     expect((await readJson(response)).error).toBe("not found");
 

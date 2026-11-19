@@ -5,6 +5,7 @@ import type {
   CompleteReportResult,
   CreateOrUpdateDraftInput,
   CreateOrUpdateDraftResult,
+  LatestCompletedReport,
   ListHistoryQuery,
   ListReportsQuery,
   ListRetentionCandidatesQuery,
@@ -226,6 +227,27 @@ export class KyselyReportRepository implements ReportRepository {
     const rows = await queryBuilder.execute();
 
     return rows.map(mapRowToReport);
+  }
+
+  async listLatestCompleted(): Promise<LatestCompletedReport[]> {
+    const rankedReports = this.db
+      .selectFrom("reports")
+      .select(["id", "repo", "branch"])
+      .select(
+        sql<number>`row_number() over (partition by repo, branch order by completed_at desc, id desc)`.as(
+          "latest_rank",
+        ),
+      )
+      .where("status", "=", "completed");
+    const rows = await this.db
+      .selectFrom(rankedReports.as("ranked_reports"))
+      .select(["id", "repo", "branch"])
+      .where("latest_rank", "=", 1)
+      .orderBy("repo")
+      .orderBy("branch")
+      .execute();
+
+    return rows.map((row) => ({ branch: row.branch, repo: row.repo, reportId: row.id }));
   }
 
   async listRetentionCandidates(query: ListRetentionCandidatesQuery): Promise<Report[]> {

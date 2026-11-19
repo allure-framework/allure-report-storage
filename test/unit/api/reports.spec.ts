@@ -20,6 +20,9 @@ const OTHER_REPO = "qameta/other-report-storage";
 const SECRET = "test-signing-secret";
 
 type HistoryResponse = { history: Array<{ point: string }> };
+type RepositoriesResponse = {
+  repositories: Record<string, { branches: Record<string, { lastReportId: string }> }>;
+};
 type TestApp = Awaited<ReturnType<typeof buildApp>> & { accessToken: string };
 
 const withApp = async (
@@ -316,6 +319,54 @@ describe("reports API", () => {
       },
       { retentionPolicy: { maxReportsPerBranch: 5 } },
     );
+  });
+
+  it("publicly lists the latest completed report for every repository branch", async () => {
+    await withApp(async ({ app }) => {
+      let response = await app.request("/api/repositories");
+
+      expect(response.status).toBe(200);
+      expect(await readJson<RepositoriesResponse>(response)).toEqual({ repositories: {} });
+
+      response = await requestAuthorized(app, "/api/reports/draft-only", {
+        method: "PUT",
+        ...jsonBody({ branch: "next", repo: "qameta/draft-only" }),
+      });
+      expect(response.status).toBe(200);
+
+      await publishHistoryPoint(app, "main-report-1", "main", "main-1");
+      await publishHistoryPoint(app, "release-report", "release", "release");
+      await publishHistoryPoint(app, "main-report-2", "main", "main-2");
+      await publishHistoryPoint(app, "other-report", "trunk", "other", OTHER_REPO);
+      await publishHistoryPoint(app, "special-report", "constructor", "special", "__proto__");
+
+      response = await app.request("/api/repositories");
+
+      expect(response.status).toBe(200);
+
+      const { repositories } = await readJson<RepositoriesResponse>(response);
+
+      expect(repositories).toEqual({
+        [OTHER_REPO]: {
+          branches: {
+            trunk: { lastReportId: "other-report" },
+          },
+        },
+        [REPO]: {
+          branches: {
+            main: { lastReportId: "main-report-2" },
+            release: { lastReportId: "release-report" },
+          },
+        },
+        ["__proto__"]: {
+          branches: {
+            constructor: { lastReportId: "special-report" },
+          },
+        },
+      });
+      expect(Object.hasOwn(repositories, "__proto__")).toBe(true);
+      expect(repositories["qameta/draft-only"]).toBeUndefined();
+    });
   });
 
   it("protects report and asset mutation endpoints", async () => {

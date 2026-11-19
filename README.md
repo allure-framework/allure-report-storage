@@ -89,6 +89,30 @@ curl -sS -X POST http://localhost:3000/api/projects/main-branch \
   -d '{ "repo": "repo_name", "main_branch": "main_branch_name"}'
 ```
 
+### Repository discovery
+
+List every repository and branch with its latest completed report. This endpoint is public and does not require an access token:
+
+```bash
+curl -sS http://localhost:3000/api/repositories
+```
+
+```json
+{
+  "repositories": {
+    "qameta/allure-report-storage": {
+      "branches": {
+        "main": {
+          "lastReportId": "report-id"
+        }
+      }
+    }
+  }
+}
+```
+
+Repositories and branches without a completed report are omitted. If two reports have the same completion time, the lexicographically greater report ID is considered the latest.
+
 ### Report retention
 
 Automated report retention can delete old reports to reduce disk or storage costs. It is disabled by default and enabled only when at least one retention env var is set:
