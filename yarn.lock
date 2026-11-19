@@ -1986,7 +1986,7 @@ __metadata:
     "@types/node": "npm:^26.6.5"
     allure: "npm:^3.21.0"
     allure-vitest: "npm:^3.14.0"
-    hono: "npm:4.13.13"
+    hono: "npm:4.13.14"
     kysely: "npm:^0.29.7"
     lefthook: "npm:^2.2.2"
     node-cron: "npm:^4.6.0"
@@ -2893,10 +2893,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"hono@npm:4.13.13":
-  version: 4.13.13
-  resolution: "hono@npm:4.13.13"
-  checksum: 10/1ff038d6ca80c42afc976a3d27857f905cf81c7460535b9916975e144f1f9b9eb5e7c81b320c799f4a419189d7bb7035c4105375be02353861cf8082832f1edc
+"hono@npm:4.13.14":
+  version: 4.13.14
+  resolution: "hono@npm:4.13.14"
+  checksum: 10/1eb7c4d358d071d208b09f62d803ac7e1674d209f23e4f9d3c666cd7107da40937d5e9a78cc44f8abc4a23050e849ec531293c4b834696862d3673e1d4942172
   languageName: node
   linkType: hard
 
