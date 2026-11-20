@@ -91,9 +91,11 @@ curl -sS -X POST http://localhost:3000/api/projects/main-branch \
 
 ### Report retention
 
-Automated report retention can delete old reports to reduce disk or storage costs. It is disabled by default and enabled only when at least one retention env var is set:
+Automated report retention can delete old reports to reduce disk or storage costs. It is disabled by default and enabled only when at least one retention age or count env var is set:
 
 - `REPORT_RETENTION_MAX_REPORTS_PER_BRANCH`: keep newest completed reports per branch up to this positive integer limit, delete older ones.
 - `REPORT_RETENTION_MAX_REPORT_AGE_DAYS`: delete reports older than this positive number of days. The newest completed report per branch is always preserved.
+- `REPORT_RETENTION_STALE_BRANCH_DAYS`: during background sweeps, delete all completed reports and stored report data for a branch when its newest completed report is older than this positive number of days.
+- `REPORT_RETENTION_PROTECTED_BRANCHES`: optional comma-separated branch names that stale-branch retention must preserve, such as `main,master,dev`.
 
-Both strategies can be enabled together. Retention does not change public history download limits or manual delete behavior.
+The default or project-specific main branch is always protected from stale-branch retention. All strategies can be enabled together. Retention does not change public history download limits or manual delete behavior.

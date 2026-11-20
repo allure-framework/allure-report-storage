@@ -150,13 +150,17 @@ const startRetentionSweep = (input: {
   fileStore: StaticFileStore;
   repositories: Parameters<typeof cleanupReportRetention>[0]["repositories"];
 }): ScheduledTask | undefined => {
-  if (retentionPolicy.maxReportsPerBranch === undefined && retentionPolicy.maxReportAgeMs === undefined) {
+  if (
+    retentionPolicy.maxReportsPerBranch === undefined &&
+    retentionPolicy.maxReportAgeMs === undefined &&
+    retentionPolicy.staleBranchAgeMs === undefined
+  ) {
     return undefined;
   }
 
   const sweep = async () => {
     try {
-      await cleanupReportRetention({ ...input, policy: retentionPolicy });
+      await cleanupReportRetention({ ...input, mainBranch, policy: retentionPolicy });
     } catch (error: unknown) {
       console.error(createErrorLog("report retention sweep failed", error));
     }

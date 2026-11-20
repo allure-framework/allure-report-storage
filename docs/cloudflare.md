@@ -98,17 +98,21 @@ Bucket-specific R2 endpoints are normalized internally.
 
 ## Report retention
 
-Automated retention can delete old reports to reduce R2 storage costs. It is disabled by default and enabled only when at least one Worker var is set:
+Automated retention can delete old reports to reduce R2 storage costs. It is disabled by default and enabled only when at least one retention age or count Worker var is set:
 
 ```bash
 REPORT_RETENTION_MAX_REPORTS_PER_BRANCH=20
 REPORT_RETENTION_MAX_REPORT_AGE_DAYS=30
+REPORT_RETENTION_STALE_BRANCH_DAYS=30
+REPORT_RETENTION_PROTECTED_BRANCHES=main,master,dev
 ```
 
 - `REPORT_RETENTION_MAX_REPORTS_PER_BRANCH`: keep newest completed reports per branch up to this positive integer limit, delete older ones.
 - `REPORT_RETENTION_MAX_REPORT_AGE_DAYS`: delete reports older than this positive number of days. The newest completed report per branch is always preserved.
+- `REPORT_RETENTION_STALE_BRANCH_DAYS`: during scheduled sweeps, delete all completed reports and stored report data for a branch when its newest completed report is older than this positive number of days.
+- `REPORT_RETENTION_PROTECTED_BRANCHES`: optional comma-separated branch names that stale-branch retention must preserve, such as `main,master,dev`.
 
-Both strategies can be enabled together. The Worker runs retention after report completion and through the scheduled cron in `wrangler.toml`. Retention does not change public history download limits or manual delete behavior.
+The default or project-specific main branch is always protected from stale-branch retention. All strategies can be enabled together. The Worker runs count/age retention after report completion and all retention strategies through the scheduled cron in `wrangler.toml`. Retention does not change public history download limits or manual delete behavior.
 
 ## Validate via GET /api/ping
 
