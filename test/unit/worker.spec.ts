@@ -244,4 +244,54 @@ describe("Cloudflare Worker entrypoint", () => {
     expect(response.status).toBe(200);
     expect(((await response.json()) as { history: Array<{ id: string }> }).history).toEqual([{ id: "scheduled-3" }]);
   });
+
+  it("removes stale branches and their R2 data during scheduled retention", async () => {
+    const env = createEnv();
+    const accessToken = await createAccessToken(env);
+
+    for (const [reportId, branch] of [
+      ["stale-feature", "feature"],
+      ["protected-release", "release"],
+    ] as const) {
+      let response = await request(env, `/api/reports/${reportId}`, accessToken, {
+        method: "PUT",
+        ...jsonBody({ branch, repo: "qameta/allure-report-storage" }),
+      });
+      expect(response.status).toBe(200);
+
+      response = await request(env, `/api/reports/${reportId}/files?path=index.html`, accessToken, {
+        body: reportId,
+        headers: { "content-length": String(Buffer.byteLength(reportId)), "content-type": "text/html" },
+        method: "PUT",
+      });
+      expect(response.status).toBe(200);
+
+      response = await request(env, `/api/reports/${reportId}/complete`, accessToken, {
+        method: "POST",
+        ...jsonBody({ historyPoint: { id: reportId } }),
+      });
+      expect(response.status).toBe(200);
+    }
+
+    env.REPORT_RETENTION_STALE_BRANCH_DAYS = "0.000000001";
+    env.REPORT_RETENTION_PROTECTED_BRANCHES = "release";
+
+    await new Promise((resolve) => setTimeout(resolve, 2));
+
+    const scheduledContext = createAwaitableExecutionContext();
+
+    await worker.scheduled({} as ScheduledController, env, scheduledContext.context as ExecutionContext);
+    await scheduledContext.wait();
+
+    let response = await request(env, "/api/history?repo=qameta%2Fallure-report-storage&branch=feature", accessToken);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ history: [] });
+
+    response = await request(env, "/api/history?repo=qameta%2Fallure-report-storage&branch=release", accessToken);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ history: [{ id: "protected-release" }] });
+
+    response = await request(env, "/stale-feature/index.html", accessToken);
+    expect(response.status).toBe(404);
+  });
 });

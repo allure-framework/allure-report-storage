@@ -26,6 +26,18 @@ export interface ListRetentionCandidatesQuery {
   now?: Date;
 }
 
+export interface ListStaleBranchReportsQuery {
+  mainBranch: string;
+  maxBranchAgeMs: number;
+  now?: Date;
+  protectedBranches?: string[];
+}
+
+export interface ReportDeletionClaim {
+  claimId: string;
+  report: Report;
+}
+
 export interface ListHistoryQuery {
   repo: string;
   branch: string;
@@ -86,11 +98,17 @@ export interface ReportRepository {
   createOrUpdateDraft(input: CreateOrUpdateDraftInput): Promise<CreateOrUpdateDraftResult>;
   complete(reportId: string): Promise<CompleteReportResult>;
   delete(reportId: string): Promise<boolean>;
-  deleteRetentionCandidate(report: Report): Promise<boolean>;
+  claimReportDeletion(report: Report): Promise<ReportDeletionClaim | null>;
+  completeReportDeletion(claim: ReportDeletionClaim): Promise<boolean>;
+  markRetentionCandidateForDeletion(report: Report): Promise<Report | null>;
+  markStaleBranchReportForDeletion(report: Report, query: ListStaleBranchReportsQuery): Promise<Report | null>;
+  releaseReportDeletion(claim: ReportDeletionClaim): Promise<boolean>;
   listHistory(query: ListHistoryQuery): Promise<Report[]>;
   listCompleted(query: ListReportsQuery): Promise<Report[]>;
   listLatestCompletedPage(query: ListLatestCompletedPageQuery): Promise<LatestCompletedReportsPage>;
   listRetentionCandidates(query: ListRetentionCandidatesQuery): Promise<Report[]>;
+  listReportsPendingDeletion(): Promise<Report[]>;
+  listStaleBranchReports(query: ListStaleBranchReportsQuery): Promise<Report[]>;
   listCompletedScopes(): Promise<Array<{ branch: string; repo: string }>>;
   findLatestByRepoAndBranch(repo: string, branch: string): Promise<Report | null>;
   close(): Promise<void>;

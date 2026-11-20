@@ -2,7 +2,7 @@ import type { Context, Env } from "hono";
 
 import type { Repositories } from "./repositories/api.js";
 
-export type ReportStatus = "draft" | "completed";
+export type ReportStatus = "draft" | "completed" | "deleting" | "deleting_claimed";
 
 export interface Report {
   id: string;
@@ -29,6 +29,8 @@ export interface Project {
 export interface RetentionPolicy {
   maxReportsPerBranch?: number;
   maxReportAgeMs?: number;
+  protectedBranches?: string[];
+  staleBranchAgeMs?: number;
 }
 
 export interface AccessTokensTable {
@@ -53,9 +55,16 @@ export interface ReportsTable {
   completed_at: Date | string | null;
 }
 
+export interface ReportDeletionClaimsTable {
+  claim_id: string;
+  claimed_at: Date | string;
+  report_id: string;
+}
+
 export interface AllureReportStorageDatabase {
   access_tokens: AccessTokensTable;
   projects: ProjectsTable;
+  report_deletion_claims: ReportDeletionClaimsTable;
   reports: ReportsTable;
 }
 
@@ -118,6 +127,8 @@ type WorkerVariableName =
   | "R2_REPORTS_PREFIX"
   | "REPORT_RETENTION_MAX_REPORT_AGE_DAYS"
   | "REPORT_RETENTION_MAX_REPORTS_PER_BRANCH"
+  | "REPORT_RETENTION_PROTECTED_BRANCHES"
+  | "REPORT_RETENTION_STALE_BRANCH_DAYS"
   | "SECRET";
 
 export type WorkerBindings = Omit<WorkerEnv, WorkerVariableName> & {
@@ -129,6 +140,8 @@ export type WorkerBindings = Omit<WorkerEnv, WorkerVariableName> & {
   R2_REPORTS_PREFIX?: string;
   REPORT_RETENTION_MAX_REPORT_AGE_DAYS?: string;
   REPORT_RETENTION_MAX_REPORTS_PER_BRANCH?: string;
+  REPORT_RETENTION_PROTECTED_BRANCHES?: string;
+  REPORT_RETENTION_STALE_BRANCH_DAYS?: string;
   SECRET?: string;
 };
 
