@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import type { StaticFileData, StaticFileStore } from "../../src/model.js";
 import type { Repositories } from "../../src/repositories/api.js";
+import { D1ProjectRepository } from "../../src/repositories/d1/projects.js";
+import { D1ReportRepository } from "../../src/repositories/d1/reports.js";
 import { SqliteReportRepository } from "../../src/repositories/sqlite/reports.js";
 import {
   cleanupReportRetention,
   cleanupReportRetentionScope,
   parseRetentionPolicy,
 } from "../../src/utils/retention.js";
+import { MemoryD1Database } from "./support/cloudflare.js";
 
 const pauseForOrdering = async (): Promise<void> => {
   await new Promise((resolve) => setTimeout(resolve, 2));
@@ -17,7 +20,11 @@ class MemoryFileStore implements StaticFileStore {
   deletedReportIds: string[] = [];
   deletedHistoryIds: string[] = [];
 
-  constructor(private readonly failReportId?: string) {}
+  constructor(private failReportId?: string) {}
+
+  allowDeletes(): void {
+    this.failReportId = undefined;
+  }
 
   async put(): Promise<void> {}
 
@@ -60,7 +67,9 @@ class MemoryFileStore implements StaticFileStore {
 
 describe("report retention", () => {
   it("removes every completed report from stale unprotected branches", async () => {
-    const repository = await SqliteReportRepository.create({ databasePath: ":memory:" });
+    const database = new MemoryD1Database();
+    const repository = await D1ReportRepository.create({ database });
+    const projects = await D1ProjectRepository.create({ database });
     const fileStore = new MemoryFileStore();
     const repo = "qameta/allure-report-storage";
 
@@ -76,12 +85,10 @@ describe("report retention", () => {
         await repository.complete(reportId);
       }
 
-      const repositories = {
-        projects: {
-          findByRepo: async () => ({ mainBranch: "trunk", repo }),
-        },
-        reports: repository,
-      } as Repositories;
+      await projects.upsertMainBranch({ mainBranch: "trunk", repo });
+      database.preparedQueries.length = 0;
+
+      const repositories = { projects, reports: repository } as Repositories;
       const deletedIds = await cleanupReportRetention({
         fileStore,
         mainBranch: "main",
@@ -101,8 +108,11 @@ describe("report retention", () => {
       expect(await repository.findById("release-1")).not.toBeNull();
       expect(fileStore.deletedReportIds).toEqual(["feature-1", "feature-2"]);
       expect(fileStore.deletedHistoryIds).toEqual(["feature-1", "feature-2"]);
+      expect(
+        database.preparedQueries.filter((query) => /^\s*select\s+\*\s+from\s+["`]?projects\b/i.test(query)),
+      ).toEqual([]);
     } finally {
-      await repository.close();
+      database.close();
     }
   });
 
@@ -131,8 +141,52 @@ describe("report retention", () => {
       expect(await repository.findById("retention-2")).toBeNull();
       expect(await repository.findById("retention-3")).not.toBeNull();
       expect(fileStore.deletedReportIds).toEqual(["retention-1"]);
+
+      fileStore.allowDeletes();
+
+      await cleanupReportRetention({
+        fileStore,
+        policy: { maxReportsPerBranch: 1 },
+        repositories: { reports: repository } as Repositories,
+      });
+
+      expect(fileStore.deletedReportIds).toEqual(["retention-1", "retention-2"]);
     } finally {
       await repository.close();
+    }
+  });
+
+  it("retries storage cleanup for the last report on a stale branch", async () => {
+    const database = new MemoryD1Database();
+    const repository = await D1ReportRepository.create({ database });
+    const fileStore = new MemoryFileStore("stale-retry");
+    const repositories = { reports: repository } as Repositories;
+    const retention = {
+      fileStore,
+      mainBranch: "main",
+      now: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+      policy: { staleBranchAgeMs: 24 * 60 * 60 * 1000 },
+      repositories,
+    };
+
+    try {
+      await repository.createOrUpdateDraft({
+        branch: "feature",
+        repo: "qameta/allure-report-storage",
+        reportId: "stale-retry",
+      });
+      await repository.complete("stale-retry");
+
+      await expect(cleanupReportRetention(retention)).rejects.toThrow("stale branch retention cleanup failed");
+      expect((await repository.listReportsPendingDeletion()).map((report) => report.id)).toEqual(["stale-retry"]);
+
+      fileStore.allowDeletes();
+
+      await expect(cleanupReportRetention(retention)).resolves.toEqual(["stale-retry"]);
+      expect(await repository.listReportsPendingDeletion()).toEqual([]);
+      expect(fileStore.deletedReportIds).toEqual(["stale-retry"]);
+    } finally {
+      database.close();
     }
   });
 

@@ -8,6 +8,15 @@ const isReportRetentionEnabled = (policy: RetentionPolicy): boolean =>
 const isRetentionSweepEnabled = (policy: RetentionPolicy): boolean =>
   isReportRetentionEnabled(policy) || policy.staleBranchAgeMs !== undefined;
 
+const deleteReportFilesAndRow = async (
+  fileStore: StaticFileStore,
+  reportsRepository: ReportRepository,
+  report: Report,
+): Promise<void> => {
+  await Promise.all([fileStore.delete(report.id), fileStore.deleteHistory(report.id)]);
+  await reportsRepository.delete(report.id);
+};
+
 const deleteReportAndFiles = async (
   fileStore: StaticFileStore,
   reportsRepository: ReportRepository,
@@ -19,13 +28,13 @@ const deleteReportAndFiles = async (
     return false;
   }
 
-  const deleted = await reportsRepository.deleteRetentionCandidate(report);
+  const marked = await reportsRepository.markRetentionCandidateForDeletion(report);
 
-  if (!deleted) {
+  if (!marked) {
     return false;
   }
 
-  await Promise.all([fileStore.delete(report.id), fileStore.deleteHistory(report.id)]);
+  await deleteReportFilesAndRow(fileStore, reportsRepository, report);
 
   return true;
 };
@@ -69,10 +78,10 @@ const cleanupStaleBranchCandidates = async (
 
   for (const report of candidates) {
     try {
-      const deleted = await reportsRepository.deleteStaleBranchReport(report, query);
+      const marked = await reportsRepository.markStaleBranchReportForDeletion(report, query);
 
-      if (deleted) {
-        await Promise.all([fileStore.delete(report.id), fileStore.deleteHistory(report.id)]);
+      if (marked) {
+        await deleteReportFilesAndRow(fileStore, reportsRepository, report);
         deletedIds.push(report.id);
       }
     } catch (cause) {
@@ -85,6 +94,33 @@ const cleanupStaleBranchCandidates = async (
 
   if (failures.length > 0) {
     throw new AggregateError(failures, "stale branch retention cleanup failed");
+  }
+
+  return deletedIds;
+};
+
+const cleanupReportsPendingDeletion = async (
+  fileStore: StaticFileStore,
+  reportsRepository: ReportRepository,
+  reports: Report[],
+): Promise<string[]> => {
+  const deletedIds: string[] = [];
+  const failures: Error[] = [];
+
+  for (const report of reports) {
+    try {
+      await deleteReportFilesAndRow(fileStore, reportsRepository, report);
+      deletedIds.push(report.id);
+    } catch (cause) {
+      const error = cause instanceof Error ? cause : new Error(String(cause));
+
+      console.error(createErrorLog(`pending report cleanup failed for report "${report.id}"`, error));
+      failures.push(error);
+    }
+  }
+
+  if (failures.length > 0) {
+    throw new AggregateError(failures, "pending report cleanup failed");
   }
 
   return deletedIds;
@@ -130,38 +166,33 @@ export const cleanupReportRetention = async (input: {
   });
   const deletedIds = await cleanupCandidates(input.fileStore, input.repositories.reports, candidates);
 
-  if (input.policy.staleBranchAgeMs === undefined) {
-    return deletedIds;
+  let staleDeletedIds: string[] = [];
+
+  if (input.policy.staleBranchAgeMs !== undefined) {
+    const staleBranchQuery = {
+      mainBranch: input.mainBranch ?? "main",
+      maxBranchAgeMs: input.policy.staleBranchAgeMs,
+      now: input.now,
+      protectedBranches: [...new Set(input.policy.protectedBranches ?? [])],
+    };
+    const staleCandidates = await input.repositories.reports.listStaleBranchReports(staleBranchQuery);
+
+    staleDeletedIds = await cleanupStaleBranchCandidates(
+      input.fileStore,
+      input.repositories.reports,
+      staleCandidates,
+      staleBranchQuery,
+    );
   }
 
-  const mainBranch = input.mainBranch ?? "main";
-  const protectedBranches = [...new Set(input.policy.protectedBranches ?? [])];
-  const staleBranchQuery = {
-    mainBranch,
-    maxBranchAgeMs: input.policy.staleBranchAgeMs,
-    now: input.now,
-    protectedBranches,
-  };
-  const staleCandidates = await input.repositories.reports.listStaleBranchReports(staleBranchQuery);
-  const projectMainBranches = new Map<string, string | undefined>();
-
-  for (const repo of new Set(staleCandidates.map((report) => report.repo))) {
-    const project = await input.repositories.projects.findByRepo(repo);
-
-    projectMainBranches.set(repo, project?.mainBranch);
-  }
-
-  const unprotectedCandidates = staleCandidates.filter(
-    (report) => report.branch !== projectMainBranches.get(report.repo),
-  );
-  const staleDeletedIds = await cleanupStaleBranchCandidates(
+  const reportsPendingDeletion = await input.repositories.reports.listReportsPendingDeletion();
+  const retriedDeletedIds = await cleanupReportsPendingDeletion(
     input.fileStore,
     input.repositories.reports,
-    unprotectedCandidates,
-    staleBranchQuery,
+    reportsPendingDeletion,
   );
 
-  return [...deletedIds, ...staleDeletedIds];
+  return [...deletedIds, ...staleDeletedIds, ...retriedDeletedIds];
 };
 
 export const parseRetentionPolicy = (getValue: (name: string) => string | undefined): RetentionPolicy => {

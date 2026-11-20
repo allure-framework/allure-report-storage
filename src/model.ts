@@ -2,7 +2,7 @@ import type { Context, Env } from "hono";
 
 import type { Repositories } from "./repositories/api.js";
 
-export type ReportStatus = "draft" | "completed";
+export type ReportStatus = "draft" | "completed" | "deleting";
 
 export interface Report {
   id: string;

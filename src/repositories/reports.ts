@@ -57,7 +57,12 @@ export class KyselyReportRepository implements ReportRepository {
   }
 
   async findById(reportId: string): Promise<Report | null> {
-    const row = await this.db.selectFrom("reports").selectAll().where("id", "=", reportId).executeTakeFirst();
+    const row = await this.db
+      .selectFrom("reports")
+      .selectAll()
+      .where("id", "=", reportId)
+      .where("status", "!=", "deleting")
+      .executeTakeFirst();
 
     return row ? mapRowToReport(row) : null;
   }
@@ -85,7 +90,7 @@ export class KyselyReportRepository implements ReportRepository {
             name: eb.ref("excluded.name"),
             updated_at: eb.ref("excluded.updated_at"),
           }))
-          .where("reports.status", "!=", "completed"),
+          .where("reports.status", "=", "draft"),
       )
       .returningAll()
       .executeTakeFirst();
@@ -94,9 +99,9 @@ export class KyselyReportRepository implements ReportRepository {
       return { report: mapRowToReport(row), conflict: false };
     }
 
-    const existing = await this.findById(input.reportId);
+    const existing = await this.findAnyById(input.reportId);
 
-    if (existing?.status === "completed") {
+    if (existing?.status === "completed" || existing?.status === "deleting") {
       return { report: null, conflict: true };
     }
 
@@ -122,7 +127,7 @@ export class KyselyReportRepository implements ReportRepository {
       return { report: mapRowToReport(row), notFound: false, conflict: false };
     }
 
-    const existing = await this.findById(reportId);
+    const existing = await this.findAnyById(reportId);
 
     if (!existing) {
       return { report: null, notFound: true, conflict: false };
@@ -137,13 +142,14 @@ export class KyselyReportRepository implements ReportRepository {
     return Number(result.numDeletedRows) > 0;
   }
 
-  async deleteRetentionCandidate(report: Report): Promise<boolean> {
+  async markRetentionCandidateForDeletion(report: Report): Promise<boolean> {
     if (report.completedAt === null) {
       return false;
     }
 
-    const result = await this.db
-      .deleteFrom("reports")
+    const row = await this.db
+      .updateTable("reports")
+      .set({ status: "deleting", updated_at: nowIso() })
       .where("id", "=", report.id)
       .where("status", "=", "completed")
       .where((eb) =>
@@ -165,19 +171,21 @@ export class KyselyReportRepository implements ReportRepository {
             ),
         ),
       )
+      .returning("id")
       .executeTakeFirst();
 
-    return Number(result.numDeletedRows) > 0;
+    return row !== undefined;
   }
 
-  async deleteStaleBranchReport(report: Report, query: ListStaleBranchReportsQuery): Promise<boolean> {
+  async markStaleBranchReportForDeletion(report: Report, query: ListStaleBranchReportsQuery): Promise<boolean> {
     if (report.completedAt === null) {
       return false;
     }
 
     const threshold = toStaleBranchThresholdIso(query);
-    let deleteQuery = this.db
-      .deleteFrom("reports")
+    let updateQuery = this.db
+      .updateTable("reports")
+      .set({ status: "deleting", updated_at: nowIso() })
       .where("id", "=", report.id)
       .where("status", "=", "completed")
       .where("branch", "!=", query.mainBranch)
@@ -194,15 +202,26 @@ export class KyselyReportRepository implements ReportRepository {
               .where("recent_reports.completed_at", ">=", threshold),
           ),
         ),
+      )
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom("projects as configured_projects")
+              .select("configured_projects.repo")
+              .whereRef("configured_projects.repo", "=", "reports.repo")
+              .whereRef("configured_projects.main_branch", "=", "reports.branch"),
+          ),
+        ),
       );
 
     if (query.protectedBranches && query.protectedBranches.length > 0) {
-      deleteQuery = deleteQuery.where("branch", "not in", query.protectedBranches);
+      updateQuery = updateQuery.where("branch", "not in", query.protectedBranches);
     }
 
-    const result = await deleteQuery.executeTakeFirst();
+    const row = await updateQuery.returning("id").executeTakeFirst();
 
-    return Number(result.numDeletedRows) > 0;
+    return row !== undefined;
   }
 
   async listHistory(query: ListHistoryQuery): Promise<Report[]> {
@@ -317,6 +336,18 @@ export class KyselyReportRepository implements ReportRepository {
     return rows.map(mapRowToReport);
   }
 
+  async listReportsPendingDeletion(): Promise<Report[]> {
+    const rows = await this.db
+      .selectFrom("reports")
+      .selectAll()
+      .where("status", "=", "deleting")
+      .orderBy("updated_at")
+      .orderBy("id")
+      .execute();
+
+    return rows.map(mapRowToReport);
+  }
+
   async listStaleBranchReports(query: ListStaleBranchReportsQuery): Promise<Report[]> {
     const threshold = toStaleBranchThresholdIso(query);
     const reportsWithLatestCompletion = this.db
@@ -329,7 +360,18 @@ export class KyselyReportRepository implements ReportRepository {
       .selectFrom(reportsWithLatestCompletion.as("stale_reports"))
       .select(["id", "repo", "branch", "name", "status", "created_at", "updated_at", "completed_at"])
       .where("branch", "!=", query.mainBranch)
-      .where("retention_latest_completed_at", "<", threshold);
+      .where("retention_latest_completed_at", "<", threshold)
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom("projects as configured_projects")
+              .select("configured_projects.repo")
+              .whereRef("configured_projects.repo", "=", "stale_reports.repo")
+              .whereRef("configured_projects.main_branch", "=", "stale_reports.branch"),
+          ),
+        ),
+      );
 
     if (query.protectedBranches && query.protectedBranches.length > 0) {
       staleReports = staleReports.where("branch", "not in", query.protectedBranches);
@@ -365,6 +407,13 @@ export class KyselyReportRepository implements ReportRepository {
   }
 
   protected async ensureSchema(): Promise<void> {
+    await this.db.schema
+      .createTable("projects")
+      .ifNotExists()
+      .addColumn("repo", "text", (column) => column.primaryKey())
+      .addColumn("main_branch", "text", (column) => column.notNull())
+      .execute();
+
     await this.db.schema
       .createTable("reports")
       .ifNotExists()
@@ -408,5 +457,11 @@ export class KyselyReportRepository implements ReportRepository {
     }
 
     return queryBuilder.execute();
+  }
+
+  private async findAnyById(reportId: string): Promise<Report | null> {
+    const row = await this.db.selectFrom("reports").selectAll().where("id", "=", reportId).executeTakeFirst();
+
+    return row ? mapRowToReport(row) : null;
   }
 }
