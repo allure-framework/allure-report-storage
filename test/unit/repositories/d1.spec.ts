@@ -194,6 +194,40 @@ describe("D1ReportRepository", () => {
     }
   });
 
+  it("lists and deletes every report from stale branches through D1 queries", async () => {
+    const database = new MemoryD1Database();
+    const repository = await D1ReportRepository.create({ database });
+
+    try {
+      for (const [reportId, branch] of [
+        ["stale-1", "feature"],
+        ["stale-2", "feature"],
+        ["protected-1", "main"],
+      ] as const) {
+        await repository.createOrUpdateDraft({ branch, repo: "qameta/allure-report-storage", reportId });
+        await repository.complete(reportId);
+      }
+
+      const query = {
+        mainBranch: "main",
+        maxBranchAgeMs: 24 * 60 * 60 * 1000,
+        now: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+      };
+      const candidates = await repository.listStaleBranchReports(query);
+
+      expect(candidates.map((report) => report.id)).toEqual(["stale-1", "stale-2"]);
+      await expect(
+        Promise.all(candidates.map((report) => repository.deleteStaleBranchReport(report, query))),
+      ).resolves.toEqual([true, true]);
+      const mainBranchReport = (await repository.findById("protected-1"))!;
+
+      await expect(repository.deleteStaleBranchReport(mainBranchReport, query)).resolves.toBe(false);
+      expect(await repository.findById("protected-1")).not.toBeNull();
+    } finally {
+      database.close();
+    }
+  });
+
   it("does not delete a retention candidate that became branch latest", async () => {
     const database = new MemoryD1Database();
     const repository = await D1ReportRepository.create({ database });

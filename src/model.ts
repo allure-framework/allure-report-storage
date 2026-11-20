@@ -29,6 +29,8 @@ export interface Project {
 export interface RetentionPolicy {
   maxReportsPerBranch?: number;
   maxReportAgeMs?: number;
+  protectedBranches?: string[];
+  staleBranchAgeMs?: number;
 }
 
 export interface AccessTokensTable {
@@ -118,6 +120,8 @@ type WorkerVariableName =
   | "R2_REPORTS_PREFIX"
   | "REPORT_RETENTION_MAX_REPORT_AGE_DAYS"
   | "REPORT_RETENTION_MAX_REPORTS_PER_BRANCH"
+  | "REPORT_RETENTION_PROTECTED_BRANCHES"
+  | "REPORT_RETENTION_STALE_BRANCH_DAYS"
   | "SECRET";
 
 export type WorkerBindings = Omit<WorkerEnv, WorkerVariableName> & {
@@ -129,6 +133,8 @@ export type WorkerBindings = Omit<WorkerEnv, WorkerVariableName> & {
   R2_REPORTS_PREFIX?: string;
   REPORT_RETENTION_MAX_REPORT_AGE_DAYS?: string;
   REPORT_RETENTION_MAX_REPORTS_PER_BRANCH?: string;
+  REPORT_RETENTION_PROTECTED_BRANCHES?: string;
+  REPORT_RETENTION_STALE_BRANCH_DAYS?: string;
   SECRET?: string;
 };
 

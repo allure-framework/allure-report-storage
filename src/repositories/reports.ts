@@ -8,6 +8,7 @@ import type {
   ListHistoryQuery,
   ListReportsQuery,
   ListRetentionCandidatesQuery,
+  ListStaleBranchReportsQuery,
   ReportRepository,
 } from "./api.js";
 
@@ -33,6 +34,9 @@ const toRetentionThresholdIso = (query: ListRetentionCandidatesQuery): string =>
 
   return thresholdDate.toISOString();
 };
+
+const toStaleBranchThresholdIso = (query: ListStaleBranchReportsQuery): string =>
+  toRetentionThresholdIso({ maxReportAgeMs: query.maxBranchAgeMs, now: query.now });
 
 const mapRowToReport = (row: ReportsTable): Report => ({
   id: row.id,
@@ -166,6 +170,41 @@ export class KyselyReportRepository implements ReportRepository {
     return Number(result.numDeletedRows) > 0;
   }
 
+  async deleteStaleBranchReport(report: Report, query: ListStaleBranchReportsQuery): Promise<boolean> {
+    if (report.completedAt === null) {
+      return false;
+    }
+
+    const threshold = toStaleBranchThresholdIso(query);
+    let deleteQuery = this.db
+      .deleteFrom("reports")
+      .where("id", "=", report.id)
+      .where("status", "=", "completed")
+      .where("branch", "!=", query.mainBranch)
+      .where("completed_at", "<", threshold)
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom("reports as recent_reports")
+              .select("recent_reports.id")
+              .whereRef("recent_reports.repo", "=", "reports.repo")
+              .whereRef("recent_reports.branch", "=", "reports.branch")
+              .where("recent_reports.status", "=", "completed")
+              .where("recent_reports.completed_at", ">=", threshold),
+          ),
+        ),
+      );
+
+    if (query.protectedBranches && query.protectedBranches.length > 0) {
+      deleteQuery = deleteQuery.where("branch", "not in", query.protectedBranches);
+    }
+
+    const result = await deleteQuery.executeTakeFirst();
+
+    return Number(result.numDeletedRows) > 0;
+  }
+
   async listHistory(query: ListHistoryQuery): Promise<Report[]> {
     const branchRows = await this.selectCompletedBranchHistory(query.repo, query.branch, query.limit);
 
@@ -274,6 +313,29 @@ export class KyselyReportRepository implements ReportRepository {
       .orderBy("completed_at", "desc")
       .orderBy("id", "desc")
       .execute();
+
+    return rows.map(mapRowToReport);
+  }
+
+  async listStaleBranchReports(query: ListStaleBranchReportsQuery): Promise<Report[]> {
+    const threshold = toStaleBranchThresholdIso(query);
+    const reportsWithLatestCompletion = this.db
+      .selectFrom("reports")
+      .selectAll()
+      .select(sql<string>`max(completed_at) over (partition by repo, branch)`.as("retention_latest_completed_at"))
+      .where("status", "=", "completed");
+
+    let staleReports = this.db
+      .selectFrom(reportsWithLatestCompletion.as("stale_reports"))
+      .select(["id", "repo", "branch", "name", "status", "created_at", "updated_at", "completed_at"])
+      .where("branch", "!=", query.mainBranch)
+      .where("retention_latest_completed_at", "<", threshold);
+
+    if (query.protectedBranches && query.protectedBranches.length > 0) {
+      staleReports = staleReports.where("branch", "not in", query.protectedBranches);
+    }
+
+    const rows = await staleReports.orderBy("repo").orderBy("branch").orderBy("completed_at").orderBy("id").execute();
 
     return rows.map(mapRowToReport);
   }

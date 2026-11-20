@@ -68,6 +68,7 @@ export default {
       createContext(env).then((context) =>
         cleanupReportRetention({
           fileStore: context.fileStore,
+          mainBranch: context.mainBranch,
           policy: context.retentionPolicy,
           repositories: context.repositories,
         }),
