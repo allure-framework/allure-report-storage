@@ -5,8 +5,9 @@ import type {
   CompleteReportResult,
   CreateOrUpdateDraftInput,
   CreateOrUpdateDraftResult,
-  LatestCompletedReport,
+  LatestCompletedReportsPage,
   ListHistoryQuery,
+  ListLatestCompletedPageQuery,
   ListReportsQuery,
   ListRetentionCandidatesQuery,
   ReportRepository,
@@ -229,7 +230,24 @@ export class KyselyReportRepository implements ReportRepository {
     return rows.map(mapRowToReport);
   }
 
-  async listLatestCompleted(): Promise<LatestCompletedReport[]> {
+  async listLatestCompletedPage(query: ListLatestCompletedPageQuery): Promise<LatestCompletedReportsPage> {
+    let repositoriesQuery = this.db.selectFrom("reports").select("repo").distinct().where("status", "=", "completed");
+
+    if (query.afterRepo !== undefined) {
+      repositoriesQuery = repositoriesQuery.where("repo", ">", query.afterRepo);
+    }
+
+    const repositoryRows = await repositoriesQuery
+      .orderBy("repo")
+      .limit(query.limit + 1)
+      .execute();
+    const hasNextPage = repositoryRows.length > query.limit;
+    const repositories = repositoryRows.slice(0, query.limit).map((row) => row.repo);
+
+    if (repositories.length === 0) {
+      return { nextRepo: null, reports: [] };
+    }
+
     const rankedReports = this.db
       .selectFrom("reports")
       .select(["id", "repo", "branch"])
@@ -238,7 +256,8 @@ export class KyselyReportRepository implements ReportRepository {
           "latest_rank",
         ),
       )
-      .where("status", "=", "completed");
+      .where("status", "=", "completed")
+      .where("repo", "in", repositories);
     const rows = await this.db
       .selectFrom(rankedReports.as("ranked_reports"))
       .select(["id", "repo", "branch"])
@@ -247,7 +266,10 @@ export class KyselyReportRepository implements ReportRepository {
       .orderBy("branch")
       .execute();
 
-    return rows.map((row) => ({ branch: row.branch, repo: row.repo, reportId: row.id }));
+    return {
+      nextRepo: hasNextPage ? repositories.at(-1)! : null,
+      reports: rows.map((row) => ({ branch: row.branch, repo: row.repo, reportId: row.id })),
+    };
   }
 
   async listRetentionCandidates(query: ListRetentionCandidatesQuery): Promise<Report[]> {

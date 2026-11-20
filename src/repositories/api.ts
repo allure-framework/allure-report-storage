@@ -39,6 +39,16 @@ export interface LatestCompletedReport {
   reportId: string;
 }
 
+export interface ListLatestCompletedPageQuery {
+  afterRepo?: string;
+  limit: number;
+}
+
+export interface LatestCompletedReportsPage {
+  nextRepo: string | null;
+  reports: LatestCompletedReport[];
+}
+
 export interface UpsertProjectMainBranchInput {
   repo: string;
   mainBranch: string;
@@ -79,7 +89,7 @@ export interface ReportRepository {
   deleteRetentionCandidate(report: Report): Promise<boolean>;
   listHistory(query: ListHistoryQuery): Promise<Report[]>;
   listCompleted(query: ListReportsQuery): Promise<Report[]>;
-  listLatestCompleted(): Promise<LatestCompletedReport[]>;
+  listLatestCompletedPage(query: ListLatestCompletedPageQuery): Promise<LatestCompletedReportsPage>;
   listRetentionCandidates(query: ListRetentionCandidatesQuery): Promise<Report[]>;
   listCompletedScopes(): Promise<Array<{ branch: string; repo: string }>>;
   findLatestByRepoAndBranch(repo: string, branch: string): Promise<Report | null>;

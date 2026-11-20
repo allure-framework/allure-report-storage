@@ -145,11 +145,17 @@ describe("D1ReportRepository", () => {
         }
       }
 
-      await expect(repository.listLatestCompleted()).resolves.toEqual([
-        { branch: "main", repo: "qameta/a", reportId: "main-z" },
-        { branch: "release", repo: "qameta/a", reportId: "release" },
-        { branch: "trunk", repo: "qameta/b", reportId: "trunk" },
-      ]);
+      await expect(repository.listLatestCompletedPage({ limit: 1 })).resolves.toEqual({
+        nextRepo: "qameta/a",
+        reports: [
+          { branch: "main", repo: "qameta/a", reportId: "main-z" },
+          { branch: "release", repo: "qameta/a", reportId: "release" },
+        ],
+      });
+      await expect(repository.listLatestCompletedPage({ afterRepo: "qameta/a", limit: 1 })).resolves.toEqual({
+        nextRepo: null,
+        reports: [{ branch: "trunk", repo: "qameta/b", reportId: "trunk" }],
+      });
     } finally {
       vi.useRealTimers();
       database.close();

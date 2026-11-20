@@ -2,7 +2,7 @@ import type { Context } from "hono";
 
 import type { BuildHttpAppOptions, DynamicBuildAppOptions } from "../model.js";
 
-export const PUBLIC_API_PATHS = ["/api/ping", "/api/repositories", "/api/token", "/api/projects/main-branch"];
+export const PUBLIC_API_PATHS = ["/api/ping", "/api/token", "/api/projects/main-branch"];
 
 export const isApiPath = (pathname: string): boolean => pathname === "/api" || pathname.startsWith("/api/");
 

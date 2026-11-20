@@ -47,7 +47,75 @@ type UploadRequestError = {
   status: 400 | 411;
 };
 
-const createRepositoriesResponse = (reports: LatestCompletedReport[]) => {
+const DEFAULT_REPOSITORIES_PAGE_LIMIT = 50;
+const MAX_REPOSITORIES_PAGE_LIMIT = 200;
+const REPOSITORIES_CURSOR_PREFIX = "repos1";
+const base64UrlPattern = /^[A-Za-z0-9_-]+$/;
+
+const encodeRepositoryCursor = (repo: string): string => {
+  let binary = "";
+
+  for (const byte of new TextEncoder().encode(repo)) {
+    binary += String.fromCharCode(byte);
+  }
+
+  const encodedRepo = btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+
+  return `${REPOSITORIES_CURSOR_PREFIX}.${encodedRepo}`;
+};
+
+const decodeRepositoryCursor = (cursor: string): string | null => {
+  const [prefix, encodedRepo, ...extra] = cursor.split(".");
+
+  if (
+    prefix !== REPOSITORIES_CURSOR_PREFIX ||
+    !encodedRepo ||
+    extra.length > 0 ||
+    !base64UrlPattern.test(encodedRepo) ||
+    encodedRepo.length % 4 === 1
+  ) {
+    return null;
+  }
+
+  try {
+    const binary = atob(
+      encodedRepo
+        .replace(/-/g, "+")
+        .replace(/_/g, "/")
+        .padEnd(Math.ceil(encodedRepo.length / 4) * 4, "="),
+    );
+    const bytes = new Uint8Array(binary.length);
+
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes) || null;
+  } catch {
+    return null;
+  }
+};
+
+const parseRepositoriesPageQuery = (
+  limitParam: string | undefined,
+  cursor: string | undefined,
+): { afterRepo?: string; limit: number } | { error: string } => {
+  const limit = limitParam === undefined ? DEFAULT_REPOSITORIES_PAGE_LIMIT : Number(limitParam);
+
+  if (!Number.isInteger(limit) || limit <= 0 || limit > MAX_REPOSITORIES_PAGE_LIMIT) {
+    return { error: `limit must be an integer between 1 and ${MAX_REPOSITORIES_PAGE_LIMIT}` };
+  }
+
+  if (cursor === undefined) {
+    return { limit };
+  }
+
+  const afterRepo = decodeRepositoryCursor(cursor);
+
+  return afterRepo === null ? { error: "after must be a valid cursor" } : { afterRepo, limit };
+};
+
+const createRepositoriesResponse = (reports: LatestCompletedReport[], nextCursor: string | null) => {
   const repositories = new Map<string, Map<string, string>>();
 
   for (const report of reports) {
@@ -66,6 +134,7 @@ const createRepositoriesResponse = (reports: LatestCompletedReport[]) => {
         },
       ]),
     ),
+    pagination: { nextCursor },
   };
 };
 
@@ -254,9 +323,16 @@ export const createHttpApp = <Bindings extends object = Record<string, never>>(
   });
 
   app.get("/api/repositories", async (c) => {
-    const reports = await c.get("repositories").reports.listLatestCompleted();
+    const query = parseRepositoriesPageQuery(c.req.query("limit"), c.req.query("after"));
 
-    return c.json(createRepositoriesResponse(reports), 200);
+    if ("error" in query) {
+      return c.json({ error: query.error }, 400);
+    }
+
+    const page = await c.get("repositories").reports.listLatestCompletedPage(query);
+    const nextCursor = page.nextRepo === null ? null : encodeRepositoryCursor(page.nextRepo);
+
+    return c.json(createRepositoriesResponse(page.reports, nextCursor), 200);
   });
 
   app.post("/api/token", async (c) => {

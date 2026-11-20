@@ -197,8 +197,13 @@ describe("reports API e2e", () => {
     await publish("branch-report-003", "main", 3);
 
     let response = await harness.request("/api/repositories", { token: null });
+    expect(response.status).toBe(401);
+    expect((await readJson(response)).error).toBe("unauthorized");
+
+    response = await harness.request("/api/repositories");
     expect(response.status).toBe(200);
     expect(await readJson(response)).toEqual({
+      pagination: { nextCursor: null },
       repositories: {
         [REPO]: {
           branches: {
