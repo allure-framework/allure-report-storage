@@ -5,7 +5,9 @@ import type {
   CompleteReportResult,
   CreateOrUpdateDraftInput,
   CreateOrUpdateDraftResult,
+  LatestCompletedReportsPage,
   ListHistoryQuery,
+  ListLatestCompletedPageQuery,
   ListReportsQuery,
   ListRetentionCandidatesQuery,
   ReportRepository,
@@ -226,6 +228,52 @@ export class KyselyReportRepository implements ReportRepository {
     const rows = await queryBuilder.execute();
 
     return rows.map(mapRowToReport);
+  }
+
+  async listLatestCompletedPage(query: ListLatestCompletedPageQuery): Promise<LatestCompletedReportsPage> {
+    let repositoriesQuery = this.db
+      .selectFrom("reports as repository_reports")
+      .select("repository_reports.repo")
+      .distinct()
+      .where("repository_reports.status", "=", "completed");
+
+    if (query.afterRepo !== undefined) {
+      repositoriesQuery = repositoriesQuery.where("repository_reports.repo", ">", query.afterRepo);
+    }
+
+    const repositoryRows = await repositoriesQuery
+      .orderBy("repository_reports.repo")
+      .limit(query.limit + 1)
+      .execute();
+    const hasNextPage = repositoryRows.length > query.limit;
+    const repositories = repositoryRows.slice(0, query.limit).map((row) => row.repo);
+
+    if (repositories.length === 0) {
+      return { nextRepo: null, reports: [] };
+    }
+
+    const rankedReports = this.db
+      .selectFrom("reports")
+      .select(["id", "repo", "branch"])
+      .select(
+        sql<number>`row_number() over (partition by repo, branch order by completed_at desc, id desc)`.as(
+          "latest_rank",
+        ),
+      )
+      .where("status", "=", "completed")
+      .where("repo", "in", repositoriesQuery.orderBy("repository_reports.repo").limit(query.limit));
+    const rows = await this.db
+      .selectFrom(rankedReports.as("ranked_reports"))
+      .select(["id", "repo", "branch"])
+      .where("latest_rank", "=", 1)
+      .orderBy("repo")
+      .orderBy("branch")
+      .execute();
+
+    return {
+      nextRepo: hasNextPage ? repositories.at(-1)! : null,
+      reports: rows.map((row) => ({ branch: row.branch, repo: row.repo, reportId: row.id })),
+    };
   }
 
   async listRetentionCandidates(query: ListRetentionCandidatesQuery): Promise<Report[]> {

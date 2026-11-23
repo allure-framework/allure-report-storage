@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { D1AccessTokenRepository } from "../../../src/repositories/d1/accessTokens.js";
 import { D1ProjectRepository } from "../../../src/repositories/d1/projects.js";
@@ -118,6 +118,70 @@ describe("D1ReportRepository", () => {
           reportId: "r1",
         }),
       ).toMatchObject({ conflict: true });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("lists the latest completed report for each repository branch", async () => {
+    const database = new MemoryD1Database();
+    const repository = await D1ReportRepository.create({ database });
+
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+
+    try {
+      for (const [reportId, repo, branch, completed] of [
+        ["main-a", "qameta/a", "main", true],
+        ["main-z", "qameta/a", "main", true],
+        ["release", "qameta/a", "release", true],
+        ["trunk", "qameta/b", "trunk", true],
+        ["draft", "qameta/draft-only", "next", false],
+      ] as const) {
+        await repository.createOrUpdateDraft({ branch, repo, reportId });
+
+        if (completed) {
+          await repository.complete(reportId);
+        }
+      }
+
+      await expect(repository.listLatestCompletedPage({ limit: 1 })).resolves.toEqual({
+        nextRepo: "qameta/a",
+        reports: [
+          { branch: "main", repo: "qameta/a", reportId: "main-z" },
+          { branch: "release", repo: "qameta/a", reportId: "release" },
+        ],
+      });
+      await expect(repository.listLatestCompletedPage({ afterRepo: "qameta/a", limit: 1 })).resolves.toEqual({
+        nextRepo: null,
+        reports: [{ branch: "trunk", repo: "qameta/b", reportId: "trunk" }],
+      });
+    } finally {
+      vi.useRealTimers();
+      database.close();
+    }
+  });
+
+  it("keeps maximum-size discovery pages within the D1 bind limit", async () => {
+    const database = new MemoryD1Database();
+    const repository = await D1ReportRepository.create({ database });
+    const completedAt = "2026-01-01T00:00:00.000Z";
+    const rows = Array.from({ length: 101 }, (_, index) => {
+      const suffix = String(index).padStart(3, "0");
+
+      return `('report-${suffix}', 'repo-${suffix}', 'main', null, 'completed', '${completedAt}', '${completedAt}', '${completedAt}')`;
+    });
+
+    try {
+      await database.exec(`
+        insert into reports (id, repo, branch, name, status, created_at, updated_at, completed_at)
+        values ${rows.join(",")}
+      `);
+
+      const page = await repository.listLatestCompletedPage({ limit: 200 });
+
+      expect(page.nextRepo).toBeNull();
+      expect(page.reports).toHaveLength(101);
     } finally {
       database.close();
     }

@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 type R2PutValue = Parameters<R2Bucket["put"]>[1];
 
 const d1Schema = readFileSync(new URL("../../../migrations/0001_initial.sql", import.meta.url), "utf8");
+const MAX_D1_BOUND_PARAMETERS = 100;
 
 const toSqliteValue = (value: unknown) => {
   if (value instanceof ArrayBuffer) {
@@ -27,6 +28,10 @@ class MemoryD1PreparedStatement implements D1PreparedStatement {
   }
 
   bind(...values: unknown[]): D1PreparedStatement {
+    if (values.length > MAX_D1_BOUND_PARAMETERS) {
+      throw new Error(`D1 statements support at most ${MAX_D1_BOUND_PARAMETERS} bound parameters`);
+    }
+
     return new MemoryD1PreparedStatement(this.database, this.sqlText, values);
   }
 

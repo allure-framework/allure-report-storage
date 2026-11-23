@@ -4,6 +4,7 @@ import { logger } from "hono/logger";
 import { getMimeType } from "hono/utils/mime";
 
 import type { AppEnv, BuildHttpAppOptions } from "./model.js";
+import type { LatestCompletedReport } from "./repositories/api.js";
 import { StorageOperationError } from "./storage/errors.js";
 import { createAccessTokenSecret, decodeAccessToken, encodeAccessToken, hashAccessToken } from "./utils/accessToken.js";
 import { createErrorLog } from "./utils/error.js";
@@ -44,6 +45,97 @@ type MultipartUploadItem = {
 type UploadRequestError = {
   error: string;
   status: 400 | 411;
+};
+
+const DEFAULT_REPOSITORIES_PAGE_LIMIT = 50;
+const MAX_REPOSITORIES_PAGE_LIMIT = 200;
+const REPOSITORIES_CURSOR_PREFIX = "repos1";
+const base64UrlPattern = /^[A-Za-z0-9_-]+$/;
+
+const encodeRepositoryCursor = (repo: string): string => {
+  let binary = "";
+
+  for (const byte of new TextEncoder().encode(repo)) {
+    binary += String.fromCharCode(byte);
+  }
+
+  const encodedRepo = btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+
+  return `${REPOSITORIES_CURSOR_PREFIX}.${encodedRepo}`;
+};
+
+const decodeRepositoryCursor = (cursor: string): string | null => {
+  const [prefix, encodedRepo, ...extra] = cursor.split(".");
+
+  if (
+    prefix !== REPOSITORIES_CURSOR_PREFIX ||
+    !encodedRepo ||
+    extra.length > 0 ||
+    !base64UrlPattern.test(encodedRepo) ||
+    encodedRepo.length % 4 === 1
+  ) {
+    return null;
+  }
+
+  try {
+    const binary = atob(
+      encodedRepo
+        .replace(/-/g, "+")
+        .replace(/_/g, "/")
+        .padEnd(Math.ceil(encodedRepo.length / 4) * 4, "="),
+    );
+    const bytes = new Uint8Array(binary.length);
+
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes) || null;
+  } catch {
+    return null;
+  }
+};
+
+const parseRepositoriesPageQuery = (
+  limitParam: string | undefined,
+  cursor: string | undefined,
+): { afterRepo?: string; limit: number } | { error: string } => {
+  const limit = limitParam === undefined ? DEFAULT_REPOSITORIES_PAGE_LIMIT : Number(limitParam);
+
+  if (!Number.isInteger(limit) || limit <= 0 || limit > MAX_REPOSITORIES_PAGE_LIMIT) {
+    return { error: `limit must be an integer between 1 and ${MAX_REPOSITORIES_PAGE_LIMIT}` };
+  }
+
+  if (cursor === undefined) {
+    return { limit };
+  }
+
+  const afterRepo = decodeRepositoryCursor(cursor);
+
+  return afterRepo === null ? { error: "after must be a valid cursor" } : { afterRepo, limit };
+};
+
+const createRepositoriesResponse = (reports: LatestCompletedReport[], nextCursor: string | null) => {
+  const repositories = new Map<string, Map<string, string>>();
+
+  for (const report of reports) {
+    const branches = repositories.get(report.repo) ?? new Map<string, string>();
+
+    branches.set(report.branch, report.reportId);
+    repositories.set(report.repo, branches);
+  }
+
+  return {
+    repositories: Object.fromEntries(
+      [...repositories].map(([repo, branches]) => [
+        repo,
+        {
+          branches: Object.fromEntries([...branches].map(([branch, lastReportId]) => [branch, { lastReportId }])),
+        },
+      ]),
+    ),
+    pagination: { nextCursor },
+  };
 };
 
 type RawUploadRequest =
@@ -228,6 +320,19 @@ export const createHttpApp = <Bindings extends object = Record<string, never>>(
 
   app.get("/api/ping", (c) => {
     return c.json({ pong: true, timestamp: Date.now() }, 200);
+  });
+
+  app.get("/api/repositories", async (c) => {
+    const query = parseRepositoriesPageQuery(c.req.query("limit"), c.req.query("after"));
+
+    if ("error" in query) {
+      return c.json({ error: query.error }, 400);
+    }
+
+    const page = await c.get("repositories").reports.listLatestCompletedPage(query);
+    const nextCursor = page.nextRepo === null ? null : encodeRepositoryCursor(page.nextRepo);
+
+    return c.json(createRepositoriesResponse(page.reports, nextCursor), 200);
   });
 
   app.post("/api/token", async (c) => {
