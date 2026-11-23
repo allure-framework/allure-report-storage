@@ -231,14 +231,18 @@ export class KyselyReportRepository implements ReportRepository {
   }
 
   async listLatestCompletedPage(query: ListLatestCompletedPageQuery): Promise<LatestCompletedReportsPage> {
-    let repositoriesQuery = this.db.selectFrom("reports").select("repo").distinct().where("status", "=", "completed");
+    let repositoriesQuery = this.db
+      .selectFrom("reports as repository_reports")
+      .select("repository_reports.repo")
+      .distinct()
+      .where("repository_reports.status", "=", "completed");
 
     if (query.afterRepo !== undefined) {
-      repositoriesQuery = repositoriesQuery.where("repo", ">", query.afterRepo);
+      repositoriesQuery = repositoriesQuery.where("repository_reports.repo", ">", query.afterRepo);
     }
 
     const repositoryRows = await repositoriesQuery
-      .orderBy("repo")
+      .orderBy("repository_reports.repo")
       .limit(query.limit + 1)
       .execute();
     const hasNextPage = repositoryRows.length > query.limit;
@@ -257,7 +261,7 @@ export class KyselyReportRepository implements ReportRepository {
         ),
       )
       .where("status", "=", "completed")
-      .where("repo", "in", repositories);
+      .where("repo", "in", repositoriesQuery.orderBy("repository_reports.repo").limit(query.limit));
     const rows = await this.db
       .selectFrom(rankedReports.as("ranked_reports"))
       .select(["id", "repo", "branch"])

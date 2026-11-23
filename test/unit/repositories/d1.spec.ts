@@ -162,6 +162,31 @@ describe("D1ReportRepository", () => {
     }
   });
 
+  it("keeps maximum-size discovery pages within the D1 bind limit", async () => {
+    const database = new MemoryD1Database();
+    const repository = await D1ReportRepository.create({ database });
+    const completedAt = "2026-01-01T00:00:00.000Z";
+    const rows = Array.from({ length: 101 }, (_, index) => {
+      const suffix = String(index).padStart(3, "0");
+
+      return `('report-${suffix}', 'repo-${suffix}', 'main', null, 'completed', '${completedAt}', '${completedAt}', '${completedAt}')`;
+    });
+
+    try {
+      await database.exec(`
+        insert into reports (id, repo, branch, name, status, created_at, updated_at, completed_at)
+        values ${rows.join(",")}
+      `);
+
+      const page = await repository.listLatestCompletedPage({ limit: 200 });
+
+      expect(page.nextRepo).toBeNull();
+      expect(page.reports).toHaveLength(101);
+    } finally {
+      database.close();
+    }
+  });
+
   it("falls back to main branch history after branch-specific history", async () => {
     const database = new MemoryD1Database();
     const repository = await D1ReportRepository.create({ database });
