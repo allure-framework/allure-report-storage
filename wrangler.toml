@@ -23,3 +23,5 @@ SECRET = "change-me-secret"
 # Optional report retention. Uncomment to enable.
 # REPORT_RETENTION_MAX_REPORTS_PER_BRANCH = "20"
 # REPORT_RETENTION_MAX_REPORT_AGE_DAYS = "30"
+# REPORT_RETENTION_STALE_BRANCH_DAYS = "30"
+# REPORT_RETENTION_PROTECTED_BRANCHES = "main,master,dev"

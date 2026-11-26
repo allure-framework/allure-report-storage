@@ -258,6 +258,46 @@ describe("D1ReportRepository", () => {
     }
   });
 
+  it("lists and marks every report from stale branches through D1 queries", async () => {
+    const database = new MemoryD1Database();
+    const repository = await D1ReportRepository.create({ database });
+
+    try {
+      for (const [reportId, branch] of [
+        ["stale-1", "feature"],
+        ["stale-2", "feature"],
+        ["protected-1", "main"],
+      ] as const) {
+        await repository.createOrUpdateDraft({ branch, repo: "qameta/allure-report-storage", reportId });
+        await repository.complete(reportId);
+      }
+
+      const query = {
+        mainBranch: "main",
+        maxBranchAgeMs: 24 * 60 * 60 * 1000,
+        now: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+      };
+      const candidates = await repository.listStaleBranchReports(query);
+
+      expect(candidates.map((report) => report.id)).toEqual(["stale-1", "stale-2"]);
+      const marked = await Promise.all(
+        candidates.map((report) => repository.markStaleBranchReportForDeletion(report, query)),
+      );
+
+      expect(marked.map((report) => report?.status)).toEqual(["deleting", "deleting"]);
+      const mainBranchReport = (await repository.findById("protected-1"))!;
+
+      await expect(repository.markStaleBranchReportForDeletion(mainBranchReport, query)).resolves.toBeNull();
+      expect((await repository.listReportsPendingDeletion()).map((report) => report.id)).toEqual([
+        "stale-1",
+        "stale-2",
+      ]);
+      expect(await repository.findById("protected-1")).not.toBeNull();
+    } finally {
+      database.close();
+    }
+  });
+
   it("does not delete a retention candidate that became branch latest", async () => {
     const database = new MemoryD1Database();
     const repository = await D1ReportRepository.create({ database });
@@ -277,8 +317,68 @@ describe("D1ReportRepository", () => {
 
       await repository.delete("race-2");
 
-      expect(await repository.deleteRetentionCandidate(candidate)).toBe(false);
+      expect(await repository.markRetentionCandidateForDeletion(candidate)).toBeNull();
       expect(await repository.findById("race-1")).not.toBeNull();
+    } finally {
+      database.close();
+    }
+  });
+
+  it("does not delete a stale branch after it becomes the project main branch", async () => {
+    const database = new MemoryD1Database();
+    const reports = await D1ReportRepository.create({ database });
+    const projects = await D1ProjectRepository.create({ database });
+
+    try {
+      await reports.createOrUpdateDraft({
+        branch: "feature",
+        repo: "qameta/allure-report-storage",
+        reportId: "stale-main-race",
+      });
+      await reports.complete("stale-main-race");
+
+      const query = {
+        mainBranch: "main",
+        maxBranchAgeMs: 24 * 60 * 60 * 1000,
+        now: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+      };
+      const candidate = (await reports.listStaleBranchReports(query))[0]!;
+
+      await projects.upsertMainBranch({ mainBranch: "feature", repo: "qameta/allure-report-storage" });
+
+      await expect(reports.markStaleBranchReportForDeletion(candidate, query)).resolves.toBeNull();
+      expect(await reports.findById(candidate.id)).not.toBeNull();
+    } finally {
+      database.close();
+    }
+  });
+
+  it("allows only the deletion claim owner to remove a report", async () => {
+    const database = new MemoryD1Database();
+    const repository = await D1ReportRepository.create({ database });
+
+    try {
+      await repository.createOrUpdateDraft({
+        branch: "feature",
+        repo: "qameta/allure-report-storage",
+        reportId: "leased-deletion",
+      });
+      await repository.complete("leased-deletion");
+
+      const query = {
+        mainBranch: "main",
+        maxBranchAgeMs: 24 * 60 * 60 * 1000,
+        now: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+      };
+      const candidate = (await repository.listStaleBranchReports(query))[0]!;
+      const pending = (await repository.markStaleBranchReportForDeletion(candidate, query))!;
+      const claim = (await repository.claimReportDeletion(pending))!;
+
+      await expect(repository.claimReportDeletion(pending)).resolves.toBeNull();
+      await expect(repository.delete(candidate.id)).resolves.toBe(false);
+      await expect(repository.completeReportDeletion({ ...claim, claimId: crypto.randomUUID() })).resolves.toBe(false);
+      await expect(repository.completeReportDeletion(claim)).resolves.toBe(true);
+      expect(await repository.findById(candidate.id)).toBeNull();
     } finally {
       database.close();
     }

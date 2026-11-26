@@ -3,7 +3,9 @@ import { DatabaseSync } from "node:sqlite";
 
 type R2PutValue = Parameters<R2Bucket["put"]>[1];
 
-const d1Schema = readFileSync(new URL("../../../migrations/0001_initial.sql", import.meta.url), "utf8");
+const d1Schema = ["0001_initial.sql", "0002_report_deletion_claims.sql"]
+  .map((fileName) => readFileSync(new URL(`../../../migrations/${fileName}`, import.meta.url), "utf8"))
+  .join("\n");
 const MAX_D1_BOUND_PARAMETERS = 100;
 
 const toSqliteValue = (value: unknown) => {
