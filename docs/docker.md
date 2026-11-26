@@ -83,6 +83,24 @@ Optional vars: `S3_PREFIX`, `S3_REPORTS_PREFIX`, `S3_ASSETS_PREFIX`, `S3_SESSION
 For Cloudflare R2, use `S3_REGION=auto`, `S3_ENDPOINT=https://<cloudflare-account-id>.r2.cloudflarestorage.com`, and `S3_FORCE_PATH_STYLE=false`.
 Bucket-specific R2 endpoints are normalized internally.
 
+## Compressed report files in SQLite
+
+A report consists of thousands of small JSON files. On a filesystem with 4 KB blocks each of them takes a full block, so a report takes about twice its size on disk. Use `REPORT_FILES_STORE=sqlite` to keep report files and history points gzipped in a SQLite database instead:
+
+```bash
+REPORT_FILES_STORE=sqlite
+REPORT_FILES_DATABASE_PATH=/data/report-files.sqlite
+```
+
+- `REPORT_FILES_DATABASE_PATH`: optional, defaults to `<DATA_DIR>/report-files.sqlite`.
+- Shared assets and files larger than 8 MB stay in the configured storage backend (file system or S3).
+- Reports published before the option was enabled stay readable from the storage backend, so no migration is needed.
+- Reports published while the option is enabled live only in the database. Turning it off again makes them unreadable, so keep it enabled until retention has removed them.
+- Deleting a report runs an incremental vacuum, so freed space is returned to the volume.
+- Files are served decompressed; clients see no difference.
+
+With a report of 1679 tests (3497 files), one report took 20.4 MB on the file system and 4.3 MB with this option, with the same upload time.
+
 ## Report retention
 
 Automated retention can delete old reports to reduce disk or S3 storage costs. It is disabled by default and enabled only when at least one retention age or count env var is set:

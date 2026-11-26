@@ -10,6 +10,7 @@ import { SqliteProjectRepository } from "./repositories/sqlite/projects.js";
 import { SqliteReportRepository } from "./repositories/sqlite/reports.js";
 import { FsStore } from "./storage/fs.js";
 import { S3Store } from "./storage/s3.js";
+import { withSqliteReportFiles } from "./storage/sqliteFiles.js";
 import { createErrorLog } from "./utils/error.js";
 import { normalizePublicUrl } from "./utils/http.js";
 import { cleanupReportRetention, parseRetentionPolicy } from "./utils/retention.js";
@@ -179,7 +180,7 @@ const main = async (): Promise<void> => {
     projects: await SqliteProjectRepository.create({ databasePath }),
     reports: await SqliteReportRepository.create({ databasePath }),
   };
-  const fileStore = createFileStore();
+  const fileStore = withSqliteReportFiles(createFileStore(), dataDir);
   const app = await buildApp({ repositories, fileStore, accessToken, mainBranch, publicUrl, retentionPolicy, secret });
 
   startRetentionSweep({ fileStore, repositories });
